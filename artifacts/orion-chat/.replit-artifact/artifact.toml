@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Orion Chat"
+description = "A polished local-first AI assistant chat experience with model selection, recent conversations, guest account flows, voice mode, dark theme support, and policy-aware response handling."
+version = "1.0.0"
+id = "artifacts/orion-chat"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20921
+
+[services.development]
+run = "pnpm --filter @workspace/orion-chat run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/orion-chat", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/orion-chat/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20921"
+BASE_PATH = "/"
