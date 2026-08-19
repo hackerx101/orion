@@ -1,0 +1,1 @@
+- [Local Orion inference](orion-local-inference.md) — keep browser inference behind the transformer adapter so real on-device weights can replace the offline fallback without changing chat UI.

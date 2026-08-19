@@ -103,9 +103,11 @@
 @keyframes breathe { 0%, 100% { transform: scale(1); opacity: .78; } 50% { transform: scale(1.04); opacity: 1; } }
 @keyframes shimmer { from { background-position: 0% 50%; } to { background-position: 180% 50%; } }
 @keyframes orbit { from { transform: rotate(0deg) translateX(8px) rotate(0deg); } to { transform: rotate(360deg) translateX(8px) rotate(-360deg); } }
+@keyframes voice-glow { 0%, 100% { box-shadow: inset 0 0 70px hsl(193 85% 55% / .08), inset 0 0 180px hsl(260 66% 70% / .04); } 50% { box-shadow: inset 0 0 100px hsl(352 74% 60% / .13), inset 0 0 220px hsl(193 85% 55% / .08); } }
 
 .animate-rise-in { animation: rise-in .42s cubic-bezier(.2,.8,.2,1) both; }
 .animate-breathe { animation: breathe 2.2s ease-in-out infinite; }
+.voice-live-glow { animation: voice-glow 4s ease-in-out infinite; }
 .composer-glow {
   position: relative;
   isolation: isolate;
