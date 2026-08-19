@@ -7,4 +7,4 @@ Orion keeps all assistant generation behind a small browser-side transformer ada
 
 **Why:** The app must remain usable without an external API, while leaving a clean seam for installing free pretrained weights later.
 
-**How to apply:** Add model loading, caching, or quantized weights inside the adapter; preserve the system prompt, safety guardrails, model timing behavior, and fallback response contract used by the chat UI.
+**How to apply:** Add model loading, caching, or quantized weights inside the adapter; preserve the system prompt, safety guardrails, model timing behavior, and fallback response contract used by the chat UI. Keep specific intent handlers ahead of generic fallback text so personal statements and health questions receive direct, human responses.
