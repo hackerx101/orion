@@ -3,9 +3,9 @@
  *
  * This module deliberately has no API key, server, or paid model dependency.
  * It is the stable local inference boundary: a future on-device
- * @huggingface/transformers pipeline can be plugged into `runTransformers`
- * without changing the chat UI. The answer router below is the deterministic
- * fallback used when a model is unavailable or a device is offline.
+ * @huggingface/transformers pipelines run in the browser with cached weights.
+ * The answer router below is the deterministic fallback used when a model is
+ * unavailable or a device is offline.
  */
 
 export const ORION_SYSTEM_PROMPT = [
@@ -25,6 +25,20 @@ const creatorLines = [
 
 const clean = (value) => value.trim().replace(/\s+/g, ' ');
 const choose = (value, count) => [...value].reduce((total, character) => total + character.charCodeAt(0), 0) % count;
+const modelPipelines = new Map();
+
+async function loadPipeline(modelId) {
+  if (!modelPipelines.has(modelId)) {
+    const loading = import('@huggingface/transformers').then(({ pipeline, env }) => {
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
+      if (env.backends?.onnx?.wasm) env.backends.onnx.wasm.numThreads = 1;
+      return pipeline('text-generation', modelId, { dtype: 'q4', device: 'wasm' });
+    });
+    modelPipelines.set(modelId, loading);
+  }
+  return modelPipelines.get(modelId);
+}
 
 function localAnswer(question, context = {}) {
   const text = clean(question);
@@ -95,28 +109,50 @@ function localAnswer(question, context = {}) {
 }
 
 async function runTransformers(question, context) {
-  // Optional hook for a future in-browser Transformers.js pipeline. Keeping
-  // this isolated means failed model loading always falls back cleanly.
-  if (typeof globalThis !== 'undefined' && globalThis.orionTransformers?.generate) {
-    return globalThis.orionTransformers.generate({
-      system: ORION_SYSTEM_PROMPT,
-      prompt: question,
-      ...context,
-    });
-  }
-  throw new Error('No on-device transformer pipeline is loaded');
+  const generator = await loadPipeline(context.modelId);
+  const messages = [
+    { role: 'system', content: ORION_SYSTEM_PROMPT },
+    ...(context.recentMessages || []).slice(-6).map((message) => ({
+      role: message.role,
+      content: message.text,
+    })),
+    { role: 'user', content: question },
+  ];
+  const output = await generator(messages, {
+    max_new_tokens: context.model === 'orion' ? 420 : 260,
+    do_sample: true,
+    temperature: context.model === 'orion' ? 0.55 : 0.7,
+    top_p: 0.9,
+    repetition_penalty: 1.12,
+    return_full_text: false,
+  });
+  const generated = Array.isArray(output) ? output[0]?.generated_text : output?.generated_text;
+  const answer = Array.isArray(generated) ? generated[generated.length - 1]?.content : generated;
+  if (typeof answer !== 'string' || !answer.trim()) throw new Error('The local model returned no answer');
+  return answer.trim();
 }
 
 export async function generateLocalResponse(question, context = {}) {
   const models = context.model === 'sting'
-    ? ['scorpio-sting', 'orion-fallback']
+    ? [
+        { name: 'scorpio-sting', modelId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX' },
+        { name: 'scorpio-sting-fallback', modelId: 'onnx-community/Qwen2.5-0.5B-Instruct-ONNX' },
+        { name: 'orion-fallback' },
+      ]
     : context.model === 'orion'
-      ? ['orion-pro', 'scorpio-sting', 'orion-fallback']
-      : ['scorpio-flash', 'orion-fallback'];
+      ? [
+          { name: 'orion-pro', modelId: 'onnx-community/Llama-3.2-1B-Instruct-ONNX' },
+          { name: 'scorpio-sting-fallback', modelId: 'onnx-community/Qwen2.5-0.5B-Instruct-ONNX' },
+          { name: 'orion-fallback' },
+        ]
+      : [
+          { name: 'scorpio-flash', modelId: 'onnx-community/Qwen2.5-0.5B-Instruct-ONNX' },
+          { name: 'orion-fallback' },
+        ];
 
   for (const model of models) {
     try {
-      if (model !== 'orion-fallback') return await runTransformers(question, { ...context, model });
+      if (model.modelId) return await runTransformers(question, { ...context, model: model.name, modelId: model.modelId });
       return localAnswer(question, context);
     } catch {
       // Try the next free local model when a pipeline is unavailable.

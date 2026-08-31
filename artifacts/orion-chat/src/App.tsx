@@ -47,7 +47,8 @@ import {
 } from 'lucide-react';
 import MyApps from '@/components/my-apps';
 import { orionResponse, type BrainAttachment } from '@/lib/orion-brain';
-import { generateLocalResponseSync, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
+import { generateLocalResponse, generateLocalResponseSync, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
+import { searchWeb, type WebCandidate, type WebSearchResult, type WebSource } from '@/lib/web-search';
 
 type ModelId = 'flash' | 'sting' | 'orion';
 type Panel = 'none' | 'guest' | 'login' | 'account' | 'sheet';
@@ -60,6 +61,9 @@ type Message = {
   policy?: boolean;
   attachment?: BrainAttachment;
   feedback?: 'up' | 'down';
+  sources?: WebSource[];
+  candidates?: WebCandidate[];
+  searchQuery?: string;
 };
 type Chat = { id: string; title: string; preview: string; time: string };
 
@@ -207,7 +211,7 @@ function App() {
   };
 
   const newChat = () => {
-    const chat: Chat = { id: createId('chat'), title: 'Untitled conversation', preview: 'A fresh place to begin.', time: 'Now' };
+    const chat: Chat = { id: createId('chat'), title: 'Welcome user', preview: 'A fresh place to begin.', time: 'Now' };
     setChats((current) => [chat, ...current]);
     setActiveChatId(chat.id);
     setChatTitle(chat.title);
@@ -230,6 +234,35 @@ function App() {
     setGenerating(false);
     setGenerationStep(0);
     if (attached) showNotice(`${attached.name} added to this chat`);
+  };
+
+  const finishWebResponse = (prompt: string, result: WebSearchResult) => {
+    setMessages((current) => {
+      const next = [...current, {
+        id: createId('assistant'),
+        role: 'assistant' as const,
+        text: result.answer,
+        time: nowTime(),
+        sources: result.sources,
+        candidates: result.candidates,
+        searchQuery: result.candidates ? prompt : undefined,
+      }];
+      if (activeChatId) window.localStorage.setItem(`orion-messages-${activeChatId}`, JSON.stringify(next));
+      return next;
+    });
+    setChats((current) => current.map((chat) => chat.id === activeChatId ? { ...chat, preview: result.answer.slice(0, 52), time: 'Now' } : chat));
+    setGenerating(false);
+    setGenerationStep(0);
+  };
+
+  const runWebSearch = (query: string, selectedTitle?: string) => {
+    setGenerating(true);
+    void searchWeb(query, selectedTitle).then((result) => finishWebResponse(query, result)).catch(() => {
+      finishWebResponse(query, {
+        answer: 'I couldn’t reach the public search sources right now, so I won’t guess or present unverified facts. Turn web search off for an offline answer, or try again.',
+        sources: [],
+      });
+    });
   };
 
   const sendMessage = (override?: string) => {
@@ -255,16 +288,27 @@ function App() {
     setEditingMessageId(null);
     setAttachment(null);
     setGenerating(true);
+    if (webSearch) {
+      timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
+      return;
+    }
     if (model === 'orion') setProUses((count) => count + 1);
     const delay = model === 'sting' ? 20000 : model === 'orion' ? 3200 : 750;
     timerRef.current = window.setTimeout(() => {
-      const fallback = generateLocalResponseSync(question, {
+      void generateLocalResponse(question, {
         model,
         systemPrompt: ORION_SYSTEM_PROMPT,
         recentMessages: messages.slice(-6),
         attachment: attached,
+      }).then((answer) => finishResponse(question, attached ?? undefined, answer)).catch(() => {
+        const fallback = generateLocalResponseSync(question, {
+          model,
+          systemPrompt: ORION_SYSTEM_PROMPT,
+          recentMessages: messages.slice(-6),
+          attachment: attached,
+        });
+        finishResponse(question, attached ?? undefined, fallback);
       });
-      finishResponse(question, attached ?? undefined, fallback);
     }, delay);
   };
 
@@ -475,7 +519,7 @@ function App() {
              {chatAction && <ChatInspector action={chatAction} query={chatSearch} setQuery={setChatSearch} messages={messages} onClose={() => setChatAction(null)} onNotice={showNotice} />}
 
             <div className="space-y-7">
-               {messages.map((message, index) => <MessageBubble key={message.id} message={message} index={index} onCopy={copyMessage} onFeedback={(kind) => updateFeedback(message.id, kind)} onEdit={editMessage} onDelete={deleteMessage} />)}
+               {messages.map((message, index) => <MessageBubble key={message.id} message={message} index={index} onCopy={copyMessage} onFeedback={(kind) => updateFeedback(message.id, kind)} onEdit={editMessage} onDelete={deleteMessage} onSelectCandidate={(candidate) => runWebSearch(message.searchQuery || message.text, candidate.title)} />)}
               {generating && <GeneratingState step={generationStep} model={model} onStop={stopGenerating} />}
             </div>
             {messages.length <= 1 && !generating && <SuggestedPrompts onSelect={(value) => { setComposer(value); composerRef.current?.focus(); }} />}
@@ -509,7 +553,7 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Orion may make mistakes.</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Orion may make mistakes.always check for accuracy</p>
           </div>
         </div>
       </main>
@@ -527,7 +571,7 @@ function App() {
   );
 }
 
-function MessageBubble({ message, index, onCopy, onFeedback, onEdit, onDelete }: { message: Message; index: number; onCopy: (text: string) => void; onFeedback: (kind: 'up' | 'down') => void; onEdit: (message: Message) => void; onDelete: (id: string) => void }) {
+function MessageBubble({ message, index, onCopy, onFeedback, onEdit, onDelete, onSelectCandidate }: { message: Message; index: number; onCopy: (text: string) => void; onFeedback: (kind: 'up' | 'down') => void; onEdit: (message: Message) => void; onDelete: (id: string) => void; onSelectCandidate: (candidate: WebCandidate) => void }) {
   const assistant = message.role === 'assistant';
   return (
     <article data-testid={`message-${message.role}-${index}`} className={`animate-rise-in ${assistant ? 'max-w-[740px]' : 'ml-auto max-w-[590px]'}`} style={{ animationDelay: `${Math.min(index * 50, 300)}ms` }}>
@@ -542,6 +586,8 @@ function MessageBubble({ message, index, onCopy, onFeedback, onEdit, onDelete }:
                <button onClick={() => onFeedback('down')} data-testid={`button-thumbs-down-${index}`} className={`rounded-lg p-1.5 hover:bg-destructive/10 hover:text-destructive ${message.feedback === 'down' ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground'}`} aria-label="Unhelpful response"><ThumbsDown size={14} fill={message.feedback === 'down' ? 'currentColor' : 'none'} /></button>
             </div>
             <p data-testid={`text-assistant-message-${index}`} className={`text-[15px] leading-7 ${message.policy ? 'rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-destructive' : 'text-foreground/85'}`}>{message.text}</p>
+             {message.candidates && <div className="mt-4 flex flex-wrap gap-2">{message.candidates.map((candidate) => <button key={candidate.title} onClick={() => onSelectCandidate(candidate)} data-testid={`button-search-candidate-${index}-${candidate.title.replaceAll(' ', '-').toLowerCase()}`} className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10">{candidate.label}</button>)}</div>}
+             {message.sources && message.sources.length > 0 && <div className="mt-4 space-y-2"><p className="font-mono text-[9px] uppercase tracking-[.14em] text-muted-foreground">Sources</p>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-border bg-muted/50 p-3 transition hover:border-primary/35"><span className="flex items-center gap-2 text-xs font-semibold"><Globe2 size={13} className="text-primary" />{source.title}</span><span className="mt-1 block text-[11px] leading-5 text-muted-foreground">{source.snippet}</span><span className="mt-2 block text-[10px] text-primary">{source.publisher} · Open source</span></a>)}</div>}
           </div>
         </div>
       ) : (
@@ -560,7 +606,7 @@ function MessageBubble({ message, index, onCopy, onFeedback, onEdit, onDelete }:
 }
 
 function GeneratingState({ step, model, onStop }: { step: number; model: ModelId; onStop: () => void }) {
-  const steps = ['Listening for the shape of it', 'Planning Essay', 'Designing Essay', 'Outputting essay'];
+  const steps = ['Listening for the shape of it', 'Planning Essay', 'Designing Essay', 'Outputting essay','Finishing up','Almost there','Checking essay for build errors'];
   return (
     <div data-testid="status-generating" className="flex gap-3 sm:gap-4 animate-rise-in">
       <div className="animate-breathe mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-foreground text-background"><span className="h-3.5 w-3.5 rounded-full border border-current" /></div>
@@ -635,7 +681,7 @@ function AddSheet({ tab, setTab, webSearch, setWebSearch, onChooseFile, onClose,
         </button>
       </div>
     ) : (
-      <div className="grid gap-3 p-5 sm:grid-cols-2">{['Garexcell', 'FSMEC', 'Calendar', 'Dropbox'].map((name) => <button key={name} onClick={() => onNotice(`${name} connector is ready for a local integration`)} data-testid={`button-connector-${name.toLowerCase()}`} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:border-primary/40 hover:bg-muted"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><UsersRound size={17} /></span><span><span className="block text-xs font-semibold">{name}</span><span className="mt-1 block text-[10px] text-muted-foreground">Local placeholder · connect later</span></span><ChevronRight size={15} className="ml-auto text-muted-foreground" /></button>)}</div>
+      <div className="grid gap-3 p-5 sm:grid-cols-2">{['Garexcell', 'FSMEC', 'Google drive','Calendar', 'Dropbox'].map((name) => <button key={name} onClick={() => onNotice(`${name} connector is ready for a local integration`)} data-testid={`button-connector-${name.toLowerCase()}`} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:border-primary/40 hover:bg-muted"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><UsersRound size={17} /></span><span><span className="block text-xs font-semibold">{name}</span><span className="mt-1 block text-[10px] text-muted-foreground">Local placeholder · connect later</span></span><ChevronRight size={15} className="ml-auto text-muted-foreground" /></button>)}</div>
     )}
     <div className="h-3" />
   </div>;
@@ -718,7 +764,7 @@ function VoiceScreen({ selected, setSelected, listening, setListening, cameraOn,
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   return <div className={`fixed inset-0 z-[60] flex flex-col bg-background animate-rise-in ${listening || cameraOn ? 'voice-live-glow' : ''}`}>
-    <div className="flex h-[76px] items-center justify-between border-b border-border px-5 sm:px-10"><button onClick={onClose} data-testid="button-close-voice" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground hover:bg-muted"><ChevronLeft size={18} />Back to chat</button><span className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Live voice · local</span><button onClick={onClose} data-testid="button-close-voice-x" className="rounded-xl p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
+    <div className="flex h-[76px] items-center justify-between border-b border-border px-5 sm:px-10"><button onClick={onClose} data-testid="button-close-voice" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground hover:bg-muted"><ChevronLeft size={18} />Back to chat</button><span className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Live voice chat</span><button onClick={onClose} data-testid="button-close-voice-x" className="rounded-xl p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
     <div className="relative mx-auto flex w-full max-w-[780px] flex-1 flex-col items-center justify-center overflow-hidden px-5">
       {cameraOn && <video ref={videoRef} autoPlay muted playsInline data-testid="video-live-camera" className="mb-6 h-36 w-56 rounded-2xl border border-primary/40 object-cover shadow-xl" />}
       <div className={`relative grid h-48 w-48 place-items-center rounded-full border border-primary/40 bg-card shadow-[0_0_0_18px_hsl(var(--primary)/.04),0_0_80px_hsl(var(--primary)/.14)] ${listening ? 'animate-breathe' : ''}`}><div className="absolute inset-4 rounded-full border border-primary/20" /><div className="absolute inset-8 rounded-full border border-accent/20" /><span className="relative grid h-20 w-20 place-items-center rounded-full bg-foreground text-background"><span className="h-8 w-8 rounded-full border-2 border-current" /></span></div>
