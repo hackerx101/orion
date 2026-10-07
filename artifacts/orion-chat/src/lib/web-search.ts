@@ -54,11 +54,15 @@ export async function searchWeb(query: string, selectedTitle?: string): Promise<
   const cleanQuery = query.trim();
   if (!cleanQuery) return { answer: 'Type a question or name to search.', sources: [] };
 
+  const subjectQuery = cleanQuery
+    .replace(/^(?:who is|who was|tell me about|information (?:about|on)|search for|look up)\s+/i, '')
+    .replace(/[?!.]+$/, '')
+    .trim();
   const wantsCurrentInfo = /\b(latest|today|current|recent|news|event|happened|happening|update|now|this week|this month|president|election|match|score|concert|death|movie|album)\b/i.test(cleanQuery);
-  if (!selectedTitle && wantsCurrentInfo) {
+  if (wantsCurrentInfo) {
     try {
       const news = await fetchJson<GdeltResponse>(
-        `${GDELT_API}?query=${encodeURIComponent(cleanQuery)}&mode=artlist&format=json&maxrecords=5&sort=HybridRel`,
+        `${GDELT_API}?query=${encodeURIComponent(selectedTitle ? `"${selectedTitle}"` : cleanQuery)}&mode=artlist&format=json&maxrecords=5&sort=HybridRel`,
       );
       const articles = (news.articles || []).filter((article) => article.title && article.url);
       if (articles.length) {
@@ -79,7 +83,7 @@ export async function searchWeb(query: string, selectedTitle?: string): Promise<
   }
 
   const search = await fetchJson<WikipediaSearchResponse>(
-    `${WIKIPEDIA_API}?action=query&list=search&srsearch=${encodeURIComponent(selectedTitle || cleanQuery)}&srlimit=5&srprop=snippet&format=json&origin=*`,
+    `${WIKIPEDIA_API}?action=query&list=search&srsearch=${encodeURIComponent(selectedTitle || subjectQuery)}&srlimit=5&srprop=snippet&format=json&origin=*`,
   );
   const pages = search.query?.search || [];
   if (!pages.length) {
@@ -94,7 +98,7 @@ export async function searchWeb(query: string, selectedTitle?: string): Promise<
     title: page.title,
     url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title.replaceAll(' ', '_'))}`,
   }));
-  const likelyPersonQuery = /^[a-z][a-z .'-]+$/i.test(cleanQuery) && cleanQuery.split(/\s+/).length >= 2 && cleanQuery.split(/\s+/).length <= 5;
+  const likelyPersonQuery = /^[a-z][a-z .'-]+$/i.test(subjectQuery) && subjectQuery.split(/\s+/).length >= 2 && subjectQuery.split(/\s+/).length <= 5;
   if (!selectedTitle && likelyPersonQuery && pages.length > 1) {
     return {
       answer: `I found several possible matches for “${cleanQuery}”. Choose one so I can use the right source instead of guessing.`,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -13,50 +13,104 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { createAppPlan, type AppBuildPlan } from '@/lib/orion-brain';
+import { createAppPlan, orionResponse, type AppBuildPlan } from '@/lib/orion-brain';
+import { generateLocalResponse, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
 
 type BuildStage = 'brief' | 'building' | 'complete';
+type AppType = 'web' | 'website' | 'mobile' | 'game' | 'dashboard' | 'api';
 
 type MyAppsProps = {
   onClose: () => void;
   onNotice: (message: string) => void;
+  model: string;
+  systemPrompt: string;
+  remainingTokens: number;
+  onConsumeTokens: (input: string, output: string) => number;
 };
 
-export default function MyApps({ onClose, onNotice }: MyAppsProps) {
+const appTypes: { id: AppType; label: string }[] = [
+  { id: 'web', label: 'Web app' },
+  { id: 'website', label: 'Website' },
+  { id: 'mobile', label: 'Mobile prototype' },
+  { id: 'game', label: 'Game' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'api', label: 'API starter' },
+];
+
+export default function MyApps({ onClose, onNotice, model, systemPrompt, remainingTokens, onConsumeTokens }: MyAppsProps) {
   const [prompt, setPrompt] = useState('');
+  const [appType, setAppType] = useState<AppType>('web');
   const [stage, setStage] = useState<BuildStage>('brief');
   const [step, setStep] = useState(0);
   const [plan, setPlan] = useState<AppBuildPlan | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-
-  useEffect(() => {
-    if (stage !== 'building' || !plan) return;
-    const interval = window.setInterval(() => {
-      setStep((current) => {
-        if (current >= plan.steps.length - 1) {
-          window.clearInterval(interval);
-          window.setTimeout(() => setStage('complete'), 500);
-          return current;
-        }
-        return current + 1;
-      });
-    }, 720);
-    return () => window.clearInterval(interval);
-  }, [stage, plan]);
+  const [agentActivity, setAgentActivity] = useState('');
+  const [buildError, setBuildError] = useState('');
 
   const visibleSteps = useMemo(
     () => plan?.steps.map((label, index) => ({ label, done: stage === 'complete' || index < step, active: stage === 'building' && index === step })) ?? [],
     [plan, stage, step],
   );
 
-  const startBuild = () => {
+  const startBuild = async () => {
     if (!prompt.trim()) return;
+    const safety = orionResponse(prompt);
+    if (safety.blocked || safety.policy || /(suicide|kill myself|harm myself|end my life|self[- ]harm|want(?:ing)? to die)/i.test(prompt)) {
+      setBuildError(safety.text);
+      return;
+    }
+    if (remainingTokens <= 0) {
+      setBuildError('Today’s local model allowance is used. It resets at midnight on this device.');
+      return;
+    }
     const nextPlan = createAppPlan(prompt);
+    nextPlan.steps = ['Planning your app brief', 'Generating the app scaffold', `Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`, 'Checking the preview', 'Build complete'];
     setPlan(nextPlan);
     setStep(0);
     setPreviewOpen(false);
+    setBuildError('');
+    setAgentActivity('Reading your app brief');
     setStage('building');
-    onNotice('Orion is shaping your app brief');
+    onNotice('The selected local model is starting your app build');
+    const appPrompt = `Create a polished ${appTypes.find((item) => item.id === appType)?.label} as one complete, self-contained HTML file with embedded CSS and JavaScript. The code will be shown to the user and run in a sandboxed browser preview. Use no remote libraries, external requests, external fonts, or backend services. Include useful interaction, accessible labels, responsive styling, and realistic sample data. Return ONLY the complete HTML document with no markdown fences or explanation. User brief: ${prompt.trim()}`;
+    setAgentActivity('Planning the first version');
+    setStep(1);
+    try {
+      const output = await generateLocalResponse(appPrompt, {
+        model,
+        systemPrompt: `${ORION_SYSTEM_PROMPT}\n${systemPrompt}\nYou are a careful app-building agent. Follow the requested app brief. Return valid, complete HTML and nothing else. Do not claim to edit source files; the app is generated as a single local preview.`,
+        maxNewTokens: 1800,
+        temperature: 0.45,
+        onProgress: (message: string) => setAgentActivity(message),
+      });
+      const html = output.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      if (!/^<!doctype html|^<html[\s>]/i.test(html)) {
+        if (/could not load a pretrained model/i.test(html)) throw new Error(html);
+        throw new Error('The selected local model did not return a complete HTML app. Try a simpler brief or another model.');
+      }
+      setStep(2);
+      setAgentActivity(`Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
+      const safeHtml = html.replace(/<head([^>]*)>/i, `<head$1><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">`);
+      nextPlan.code = safeHtml;
+      nextPlan.summary = `A ${appTypes.find((item) => item.id === appType)?.label.toLowerCase()} generated from your brief using ${model}.`;
+      nextPlan.files = [
+        { name: `${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'orion-app'}/index.html`, purpose: 'Editable app markup, styling, and local interactions' },
+      ];
+      nextPlan.steps = [...nextPlan.steps.slice(0, 3), 'Checking the sandboxed preview', 'Build complete'];
+      onConsumeTokens(appPrompt, output);
+      setStep(3);
+      setAgentActivity('Checking the preview');
+      setPlan({ ...nextPlan });
+      setStep(4);
+      setAgentActivity('Build complete');
+      setStage('complete');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The local app build could not finish.';
+      setBuildError(message);
+      setAgentActivity('Build stopped');
+      setStage('brief');
+      onNotice('The local app build could not finish');
+    }
   };
 
   const reset = () => {
@@ -64,6 +118,8 @@ export default function MyApps({ onClose, onNotice }: MyAppsProps) {
     setStep(0);
     setPlan(null);
     setPreviewOpen(false);
+    setBuildError('');
+    setAgentActivity('');
   };
 
   return (
@@ -92,6 +148,10 @@ export default function MyApps({ onClose, onNotice }: MyAppsProps) {
 
             {stage === 'brief' ? (
               <div className="mt-8 rounded-[26px] border border-border bg-card p-3 shadow-[0_18px_50px_hsl(var(--foreground)/.06)]">
+                <label htmlFor="app-type" className="mb-1 block px-3 pt-2 text-xs font-semibold">App type</label>
+                <select id="app-type" value={appType} onChange={(event) => setAppType(event.target.value as AppType)} data-testid="select-app-type" className="mx-2 mb-2 h-10 w-[calc(100%-16px)] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary">
+                  {appTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+                </select>
                 <textarea
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
@@ -101,12 +161,13 @@ export default function MyApps({ onClose, onNotice }: MyAppsProps) {
                   className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 outline-none placeholder:text-muted-foreground/70"
                 />
                 <div className="flex items-center justify-between gap-3 border-t border-border/70 px-2 pt-3">
-                  <span className="font-mono text-[10px] uppercase tracking-[.12em] text-muted-foreground">Start with the why</span>
-                  <button onClick={startBuild} disabled={!prompt.trim()} data-testid="button-start-app-build" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35">
+                  <span className="font-mono text-[10px] uppercase tracking-[.12em] text-muted-foreground">{Math.round(remainingTokens / 1000)}K estimated tokens left</span>
+                  <button onClick={() => void startBuild()} disabled={!prompt.trim()} data-testid="button-start-app-build" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35">
                     <Plus size={15} />
                     Create app
                   </button>
                 </div>
+                {buildError && <p role="alert" className="px-3 pb-2 pt-3 text-xs leading-5 text-destructive">{buildError}</p>}
               </div>
             ) : (
               <div className="mt-8 rounded-[26px] border border-border bg-card p-5 shadow-[0_18px_50px_hsl(var(--foreground)/.06)]">
@@ -162,6 +223,7 @@ export default function MyApps({ onClose, onNotice }: MyAppsProps) {
                   ))}
                 </div>
 
+                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working locally…'}</div>}
                 {stage === 'complete' && plan && (
                   <div className="mt-6 border-t border-border/70 pt-5">
                     <div className="flex items-start gap-3">

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   ArrowUp,
+  AppWindow,
   AtSign,
   Bell,
   Bot,
@@ -46,11 +47,12 @@ import {
   Zap,
 } from 'lucide-react';
 import MyApps from '@/components/my-apps';
+import SettingsCenter from '@/components/settings-center';
 import { orionResponse, type BrainAttachment } from '@/lib/orion-brain';
 import { generateLocalResponse, generateLocalResponseSync, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
 import { searchWeb, type WebCandidate, type WebSearchResult, type WebSource } from '@/lib/web-search';
 
-type ModelId = 'flash' | 'sting' | 'orion';
+type ModelId = 'flash' | 'sting' | 'orion' | 'orion-pro' | 'crimson-crush' | 'crimson-lite' | 'crimson-pro';
 type Panel = 'none' | 'guest' | 'login' | 'account' | 'sheet';
 type Role = 'user' | 'assistant';
 type Message = {
@@ -71,11 +73,21 @@ const nowTime = () =>
   new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date());
 
 const modelDetails: Record<ModelId, { name: string; label: string; description: string; color: string }> = {
-  flash: { name: 'Scorpio Flash 1.0', label: 'Fast replies', description: 'Quick, capable, and ideal for everyday questions.', color: 'cyan' },
-  sting: { name: 'Scorpio Sting', label: 'Balanced thought', description: 'A little more careful with nuance, planning, and tone.', color: 'violet' },
-  orion: { name: 'Orion Intelligence', label: 'Pro · Deep reasoning', description: 'Our most considered model for hard problems and long-form work.', color: 'rose' },
+  flash: { name: 'Scorpio Flash 1.0', label: 'Fast local model', description: 'Small Qwen instruction model for quick everyday replies.', color: 'cyan' },
+  sting: { name: 'Scorpio Sting', label: 'Balanced local model', description: 'Uses a larger free local model; replies take at least 20 seconds.', color: 'violet' },
+  orion: { name: 'Orion Intelligence', label: 'Local assistant', description: 'A local model preset for more considered answers.', color: 'rose' },
+  'orion-pro': { name: 'Orion Pro', label: 'Large local model', description: 'Uses a 3B-parameter free model; first download is about 3.4 GB and needs several GB of memory.', color: 'rose' },
+  'crimson-crush': { name: 'Crimson Crush 1.5', label: 'Large local model', description: 'Creative preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'violet' },
+  'crimson-lite': { name: 'Crimson Lite', label: 'Light local model', description: 'Small SmolLM instruction model for a lighter footprint.', color: 'cyan' },
+  'crimson-pro': { name: 'Crimson 1.8 Pro', label: 'Large local model', description: 'Extended preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'rose' },
 };
 
+const FREE_DAILY_TOKEN_LIMIT = 120_000;
+const localDayKey = () => new Date().toLocaleDateString('en-CA');
+const readDailyUsage = () => {
+  const saved = readStore<{ day: string; used: number }>('orion-local-usage', { day: localDayKey(), used: 0 });
+  return saved.day === localDayKey() ? saved.used : 0;
+};
 const readStore = <T,>(key: string, fallback: T): T => {
   if (typeof window === 'undefined') return fallback;
   try {
@@ -84,6 +96,10 @@ const readStore = <T,>(key: string, fallback: T): T => {
   } catch {
     return fallback;
   }
+};
+const readAssistantPrompt = () => {
+  const custom = readStore<string>('orion-settings-prompt', '').trim();
+  return custom ? `${ORION_SYSTEM_PROMPT}\n\nAdditional user preferences: ${custom}` : ORION_SYSTEM_PROMPT;
 };
 
 const starterChatIds = new Set(['orion-brief', 'kyoto-notes', 'kitchen-table', 'reading-list', 'launch-plan']);
@@ -99,6 +115,7 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>('none');
   const [loggedIn, setLoggedIn] = useState(() => readStore('orion-logged-in', false));
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [chats, setChats] = useState<Chat[]>(readChats);
   const [activeChatId, setActiveChatId] = useState('');
   const [messages, setMessages] = useState<Message[]>(() => readChats().length ? readStore('orion-messages', []) : []);
@@ -107,9 +124,12 @@ function App() {
   const [modelOpen, setModelOpen] = useState(false);
   const [sheetTab, setSheetTab] = useState<'add' | 'connectors'>('add');
   const [webSearch, setWebSearch] = useState(false);
+  const [webSearchAllowed, setWebSearchAllowed] = useState(() => readStore('orion-web-search-allowed', true));
   const [attachment, setAttachment] = useState<BrainAttachment | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
+  const [modelStatus, setModelStatus] = useState('');
+  const [usedTokens, setUsedTokens] = useState(readDailyUsage);
   const [proUses, setProUses] = useState(() => readStore('orion-pro-uses', 0));
   const [essayOpen, setEssayOpen] = useState(false);
   const [essayTitle, setEssayTitle] = useState('');
@@ -125,7 +145,7 @@ function App() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [liveListening, setLiveListening] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
-  const [appScreen, setAppScreen] = useState(false);
+  const [appScreen, setAppScreen] = useState(() => typeof window !== 'undefined' && window.location.pathname === '/apps');
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [chatAction, setChatAction] = useState<'search' | 'media' | 'notifications' | null>(null);
   const [chatSearch, setChatSearch] = useState('');
@@ -139,6 +159,8 @@ function App() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<number | null>(null);
   const holdRef = useRef<number | null>(null);
+  const requestIdRef = useRef(0);
+  const longPressTriggeredRef = useRef<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -150,12 +172,44 @@ function App() {
     if (activeChatId) window.localStorage.setItem(`orion-messages-${activeChatId}`, JSON.stringify(messages));
   }, [activeChatId, messages]);
   useEffect(() => { window.localStorage.setItem('orion-model', JSON.stringify(model)); }, [model]);
+  useEffect(() => { window.localStorage.setItem('orion-web-search-allowed', JSON.stringify(webSearchAllowed)); }, [webSearchAllowed]);
   useEffect(() => { window.localStorage.setItem('orion-pro-uses', JSON.stringify(proUses)); }, [proUses]);
   useEffect(() => { window.localStorage.setItem('orion-logged-in', JSON.stringify(loggedIn)); }, [loggedIn]);
+  useEffect(() => { window.localStorage.setItem('orion-local-usage', JSON.stringify({ day: localDayKey(), used: usedTokens })); }, [usedTokens]);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  useEffect(() => {
+    const midnightCheck = window.setInterval(() => {
+      if (readDailyUsage() === 0 && usedTokens > 0) setUsedTokens(0);
+    }, 60_000);
+    return () => window.clearInterval(midnightCheck);
+  }, [usedTokens]);
+  useEffect(() => {
+    const onPopState = () => setAppScreen(window.location.pathname === '/apps');
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const selectedModel = modelDetails[model];
   const proLocked = false;
+  const remainingTokens = Math.max(0, FREE_DAILY_TOKEN_LIMIT - usedTokens);
+
+  const openApps = () => {
+    if (window.location.pathname !== '/apps') window.history.pushState({}, '', '/apps');
+    setAppScreen(true);
+  };
+  const closeApps = () => {
+    if (window.location.pathname === '/apps') window.history.pushState({}, '', '/');
+    setAppScreen(false);
+  };
+  const chargeTokens = (input: string, output: string) => {
+    const estimate = Math.ceil((input.length + output.length) / 4);
+    setUsedTokens((current) => Math.min(FREE_DAILY_TOKEN_LIMIT, current + estimate));
+    return estimate;
+  };
+  const openSettings = () => {
+    setSettingsOpen(true);
+    setPanel('none');
+  };
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -189,11 +243,12 @@ function App() {
     showNotice('Chat deleted');
   };
 
-  const shareChat = async () => {
-    const text = `${chatTitle}\n\n${messages.map((message) => `${message.role === 'user' ? 'You' : 'Orion'}: ${message.text}`).join('\n\n')}`;
+  const shareChat = async (chat: Chat) => {
+    const chatMessages = chat.id === activeChatId ? messages : readStore<Message[]>(`orion-messages-${chat.id}`, []);
+    const text = `${chat.title}\n\n${chatMessages.map((message) => `${message.role === 'user' ? 'You' : 'Orion'}: ${message.text}`).join('\n\n')}`;
     try {
       const canShare = typeof navigator.share === 'function';
-      if (canShare) await navigator.share({ title: chatTitle, text });
+      if (canShare) await navigator.share({ title: chat.title, text });
       else await navigator.clipboard?.writeText(text);
       showNotice(canShare ? 'Share sheet opened' : 'Chat copied to clipboard');
     } catch {
@@ -203,7 +258,10 @@ function App() {
 
   const beginChatHold = (chatId: string) => {
     if (holdRef.current) window.clearTimeout(holdRef.current);
-    holdRef.current = window.setTimeout(() => setChatHoldId(chatId), 520);
+    holdRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = chatId;
+      setChatHoldId(chatId);
+    }, 520);
   };
 
   const endChatHold = () => {
@@ -221,10 +279,13 @@ function App() {
     showNotice('New conversation ready');
   };
 
-  const finishResponse = (prompt: string, attached?: BrainAttachment, localText?: string) => {
+  const finishResponse = (prompt: string, attached?: BrainAttachment, localText?: string, requestId?: number) => {
+    if (requestId !== undefined && requestId !== requestIdRef.current) return;
     const response = orionResponse(prompt, attached, webSearch);
-    const specialized = response.blocked || response.policy || attached || /(creator of orion|who (created|made|built)|garexcell products|time in (uk|london|britain|england))/i.test(prompt);
+    const specialized = response.blocked || response.policy || attached ||
+      /(creator of orion|who (created|made|built)|garexcell products|time in (uk|london|britain|england)|suicide|kill myself|harm myself|end my life|self[- ]harm|want(?:ing)? to die)/i.test(prompt);
     const finalText = specialized ? response.text : localText || response.text;
+    if (localText) chargeTokens(prompt, finalText);
     setMessages((current) => {
       const next = [...current, { id: createId('assistant'), role: 'assistant' as const, text: finalText, time: nowTime(), policy: response.policy }];
       if (activeChatId) window.localStorage.setItem(`orion-messages-${activeChatId}`, JSON.stringify(next));
@@ -233,10 +294,12 @@ function App() {
     setChats((current) => current.map((chat) => chat.id === activeChatId ? { ...chat, preview: finalText.slice(0, 52), time: 'Now' } : chat));
     setGenerating(false);
     setGenerationStep(0);
+    setModelStatus('');
     if (attached) showNotice(`${attached.name} added to this chat`);
   };
 
-  const finishWebResponse = (prompt: string, result: WebSearchResult) => {
+  const finishWebResponse = (prompt: string, result: WebSearchResult, requestId?: number) => {
+    if (requestId !== undefined && requestId !== requestIdRef.current) return;
     setMessages((current) => {
       const next = [...current, {
         id: createId('assistant'),
@@ -253,21 +316,27 @@ function App() {
     setChats((current) => current.map((chat) => chat.id === activeChatId ? { ...chat, preview: result.answer.slice(0, 52), time: 'Now' } : chat));
     setGenerating(false);
     setGenerationStep(0);
+    setModelStatus('');
   };
 
   const runWebSearch = (query: string, selectedTitle?: string) => {
+    const requestId = requestIdRef.current;
     setGenerating(true);
-    void searchWeb(query, selectedTitle).then((result) => finishWebResponse(query, result)).catch(() => {
+    void searchWeb(query, selectedTitle).then((result) => finishWebResponse(query, result, requestId)).catch(() => {
       finishWebResponse(query, {
         answer: 'I couldn’t reach the public search sources right now, so I won’t guess or present unverified facts. Turn web search off for an offline answer, or try again.',
         sources: [],
-      });
+      }, requestId);
     });
   };
 
   const sendMessage = (override?: string) => {
     const prompt = (override ?? composer).trim();
     if ((!prompt && !attachment) || generating || proLocked) return;
+    if (remainingTokens <= 0 && !(webSearch && webSearchAllowed)) {
+      showNotice('Today’s free local model allowance is used. It resets at midnight on this device.');
+      return;
+    }
     if (/(essay|paragraph|article|write about)/i.test(prompt) && !override) {
       setEssayTitle(prompt.replace(/^(write|draft|create)\s+(an?\s+)?(essay|paragraph|article)\s*(about|on)?\s*/i, '').trim() || 'Untitled piece');
       setEssayOpen(true);
@@ -287,55 +356,99 @@ function App() {
     setComposer('');
     setEditingMessageId(null);
     setAttachment(null);
+    if (isBlocked || /(suicide|kill myself|harm myself|end my life|self[- ]harm|want(?:ing)? to die)/i.test(question)) {
+      setMessages((current) => [...current, { id: createId('assistant'), role: 'assistant', text: response.text, time: nowTime(), policy: isBlocked }]);
+      return;
+    }
     setGenerating(true);
-    if (webSearch) {
+    setModelStatus('Waiting for local model');
+    const requestId = ++requestIdRef.current;
+    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use the local model.');
+    if (webSearch && webSearchAllowed) {
       timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
       return;
     }
-    if (model === 'orion') setProUses((count) => count + 1);
-    const delay = model === 'sting' ? 20000 : model === 'orion' ? 3200 : 750;
+    if (model === 'orion' || model === 'orion-pro' || model === 'crimson-pro') setProUses((count) => count + 1);
+    const delay = model === 'flash' || model === 'crimson-lite' ? 250 : model === 'sting' ? 0 : 900;
     timerRef.current = window.setTimeout(() => {
+      const startedAt = Date.now();
       void generateLocalResponse(question, {
         model,
-        systemPrompt: ORION_SYSTEM_PROMPT,
+        systemPrompt: readAssistantPrompt(),
         recentMessages: messages.slice(-6),
         attachment: attached,
-      }).then((answer) => finishResponse(question, attached ?? undefined, answer)).catch(() => {
+        temperature: readStore('orion-settings-creativity', 0.6),
+        onProgress: (message: string) => setModelStatus(message),
+      }).then((answer) => {
+        const waitForSting = model === 'sting' ? Math.max(0, 20000 - (Date.now() - startedAt)) : 0;
+        window.setTimeout(() => finishResponse(question, attached ?? undefined, answer, requestId), waitForSting);
+      }).catch(() => {
         const fallback = generateLocalResponseSync(question, {
           model,
-          systemPrompt: ORION_SYSTEM_PROMPT,
+          systemPrompt: readAssistantPrompt(),
           recentMessages: messages.slice(-6),
           attachment: attached,
         });
-        finishResponse(question, attached ?? undefined, fallback);
+        finishResponse(question, attached ?? undefined, fallback, requestId);
       });
     }, delay);
   };
 
   const stopGenerating = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    requestIdRef.current += 1;
     timerRef.current = null;
     setGenerating(false);
     setGenerationStep(0);
+    setModelStatus('');
     setMessages((current) => [...current, { id: createId('assistant'), role: 'assistant', text: 'I stopped there. The thread is yours to continue whenever you’re ready.', time: nowTime() }]);
   };
 
   const startEssay = () => {
     if (!essayTitle.trim()) return;
+    const essaySafety = orionResponse(`Write an essay about ${essayTitle.trim()}`);
+    if (essaySafety.blocked || essaySafety.policy || /(suicide|kill myself|harm myself|end my life|self[- ]harm|want(?:ing)? to die)/i.test(essayTitle)) {
+      setEssayOpen(false);
+      setMessages((current) => [...current, { id: createId('assistant'), role: 'assistant', text: essaySafety.text, time: nowTime(), policy: essaySafety.blocked }]);
+      return;
+    }
     const brief = `${essayTitle.trim()} (${essayWords} words)`;
     setEssayOpen(false);
     setMessages((current) => [...current, { id: createId('user'), role: 'user', text: `Draft an essay: ${brief}`, time: nowTime() }]);
     setGenerating(true);
     setGenerationStep(1);
-    timerRef.current = window.setTimeout(() => setGenerationStep(2), 1300);
-    window.setTimeout(() => setGenerationStep(3), 2600);
-    window.setTimeout(() => {
-      const essay = `# ${essayTitle.trim()}\n\nThis locally generated draft begins with a clear central idea, develops it through practical context, and closes by returning to the reader’s next step.\n\nThe strongest version of this piece will add your own examples, lived details, and point of view. Orion can now help you select, revise, or expand the draft.`;
+    setModelStatus('Planning essay');
+    const requestId = ++requestIdRef.current;
+    const essayPrompt = `Write a complete, coherent essay titled "${essayTitle.trim()}" in approximately ${essayWords} words. Answer the topic directly, use a clear thesis and well-developed paragraphs, and do not invent specific facts or citations.`;
+    setTimeout(() => {
+      if (requestId === requestIdRef.current) setGenerationStep(2);
+    }, 450);
+    setModelStatus('Designing essay');
+    void generateLocalResponse(essayPrompt, {
+      model,
+      systemPrompt: `${readAssistantPrompt()} Write polished essays with an introduction, clear argument, developed body paragraphs, and conclusion.`,
+      recentMessages: messages.slice(-4),
+      maxNewTokens: Math.min(900, Math.max(420, Math.ceil(Number(essayWords) * 1.7))),
+      temperature: readStore('orion-settings-creativity', 0.6),
+      onProgress: (message: string) => { setModelStatus(message); setGenerationStep(3); },
+    }).then((essay) => {
+      if (requestId !== requestIdRef.current) return;
+      if (/could not load a pretrained model/i.test(essay)) throw new Error(essay);
+      setModelStatus('Outputting essay');
+      setGenerationStep(4);
+      chargeTokens(essayPrompt, essay);
       setEssayResult(essay);
       setMessages((current) => [...current, { id: createId('assistant'), role: 'assistant' as const, text: essay, time: nowTime() }]);
       setGenerating(false);
       setGenerationStep(0);
-    }, 4200);
+      setModelStatus('');
+    }).catch(() => {
+      if (requestId !== requestIdRef.current) return;
+      setGenerating(false);
+      setGenerationStep(0);
+      setModelStatus('');
+      showNotice('The local essay model could not be loaded. Check your connection and try again.');
+    });
   };
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>, kind: BrainAttachment['kind']) => {
@@ -414,7 +527,7 @@ function App() {
         </div>
         <div className={`px-3 ${expanded ? '' : 'flex justify-center'}`}>
           <div className={`flex items-center ${expanded ? 'gap-3' : 'justify-center'}`}>
-            <button onClick={newChat} data-testid="button-new-chat" aria-label="Start a new chat" className="group relative grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground shadow-[0_8px_20px_hsl(var(--accent)/.18)] transition-all hover:scale-[1.05]"><Plus size={19} strokeWidth={2.5} /></button>
+            <button onClick={newChat} disabled={generating} data-testid="button-new-chat" aria-label="Start a new chat" className="group relative grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground shadow-[0_8px_20px_hsl(var(--accent)/.18)] transition-all hover:scale-[1.05] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={19} strokeWidth={2.5} /></button>
             {expanded && <span className="text-sm font-semibold">New chat</span>}
           </div>
         </div>
@@ -428,9 +541,10 @@ function App() {
           {chats.length === 0 && expanded && <p data-testid="text-empty-recent-chats" className="px-3 py-4 text-xs leading-5 text-muted-foreground">Your recent conversations will appear here.</p>}
            {chats.map((chat) => (
              <div key={chat.id} className="relative">
-               <button
-                 onClick={() => { if (chatHoldId === chat.id) { setChatHoldId(null); return; } selectChat(chat); }}
-                 onContextMenu={(event) => { event.preventDefault(); setChatHoldId(chat.id); }}
+                <button
+                  disabled={generating}
+                  onClick={() => { if (longPressTriggeredRef.current === chat.id) { longPressTriggeredRef.current = null; return; } if (chatHoldId === chat.id) { setChatHoldId(null); return; } selectChat(chat); }}
+                  onContextMenu={(event) => { event.preventDefault(); longPressTriggeredRef.current = chat.id; setChatHoldId(chat.id); }}
                  onPointerDown={() => beginChatHold(chat.id)}
                  onPointerUp={endChatHold}
                  onPointerLeave={endChatHold}
@@ -441,38 +555,46 @@ function App() {
                  {expanded && <span className="min-w-0 flex-1"><span data-testid={`text-chat-title-${chat.id}`} className="block truncate text-[13px] font-medium">{chat.title}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{chat.preview}</span></span>}
                </button>
                {chatHoldId === chat.id && <div data-testid={`menu-chat-actions-${chat.id}`} className="absolute left-8 top-12 z-50 w-48 rounded-2xl border border-border bg-popover p-1.5 shadow-[0_18px_50px_hsl(var(--foreground)/.16)]">
-                 <button onClick={() => { void shareChat(); setChatHoldId(null); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs hover:bg-muted"><Share2 size={14} />Share chat</button>
+                  <button onClick={() => { void shareChat(chat); setChatHoldId(null); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs hover:bg-muted"><Share2 size={14} />Share chat</button>
                  <button onClick={() => deleteChat(chat.id)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-destructive hover:bg-destructive/10"><Trash2 size={14} />Delete chat</button>
                </div>}
              </div>
            ))}
         </nav>
         <div className={`border-t border-sidebar-border px-3 py-4 ${expanded ? '' : 'flex justify-center'}`}>
-          {expanded && <div className="mb-2 flex items-center justify-between px-2"><span className="font-mono text-[10px] font-medium uppercase tracking-[.18em] text-muted-foreground">My apps</span><Sparkles size={13} className="text-primary" /></div>}
-          <button onClick={() => setAppScreen(true)} data-testid="button-create-app" className={`flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Plus size={16} /></span>
-            {expanded && <span><span className="block text-sm font-semibold">Create app</span><span className="block text-[11px] text-muted-foreground">Turn a prompt into a preview</span></span>}
+          {expanded && <div className="mb-2 flex items-center justify-between px-2"><span className="font-mono text-[10px] font-medium uppercase tracking-[.18em] text-muted-foreground">Workspace</span><Sparkles size={13} className="text-primary" /></div>}
+          <button onClick={openApps} disabled={generating} data-testid="button-open-apps" className={`flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><AppWindow size={16} /></span>
+            {expanded && <span><span className="block text-sm font-semibold">Apps</span><span className="block text-[11px] text-muted-foreground">Open the local app builder</span></span>}
+          </button>
+          <button onClick={openApps} disabled={generating} data-testid="button-create-app" className={`mt-1 flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-muted-foreground"><Plus size={16} /></span>
+            {expanded && <span className="text-xs font-medium">Create app</span>}
           </button>
         </div>
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 rounded-xl bg-background/65 p-3">
-              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Local workspace</span><span className="font-mono text-muted-foreground">ON DEVICE</span></div>
-              <div className="mt-2 h-1 rounded-full bg-border"><div className="h-1 w-[68%] rounded-full bg-primary" /></div>
+              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free local allowance</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
+              <div className="mt-2 h-1 rounded-full bg-border"><div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, remainingTokens / FREE_DAILY_TOKEN_LIMIT * 100))}%` }} /></div>
+              <p className="mt-1.5 text-[9px] leading-4 text-muted-foreground">Approximate tokens · resets at midnight locally</p>
             </div>
           )}
-          <button onClick={() => loggedIn ? setPanel('account') : setPanel('guest')} data-testid="button-manage-account" className={`flex w-full items-center rounded-xl text-muted-foreground hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}><UserRound size={17} />{expanded && <span className="text-sm">Manage account</span>}</button>
-          {loggedIn && <button onClick={() => { setAccountSection('Settings'); setPanel('account'); }} data-testid="button-settings" className={`flex w-full items-center rounded-xl text-muted-foreground hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}><Settings size={17} />{expanded && <span className="text-sm">Settings</span>}</button>}
+          <button onClick={() => setPanel('guest')} data-testid="button-manage-account" className={`flex w-full items-center rounded-xl text-muted-foreground hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}><UserRound size={17} />{expanded && <span className="text-sm">Manage account</span>}</button>
+          <button onClick={openSettings} data-testid="button-settings" className={`flex w-full items-center rounded-xl text-muted-foreground hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}><Settings size={17} />{expanded && <span className="text-sm">Settings</span>}</button>
           {!expanded && <button onClick={() => setExpanded(true)} data-testid="button-expand-sidebar" aria-label="Expand sidebar" className="mt-1 flex w-full justify-center rounded-xl p-3 text-muted-foreground hover:bg-background"><ChevronRight size={17} /></button>}
         </div>
       </aside>
       {mobileOpen && <div className="fixed inset-0 z-30 bg-foreground/20 backdrop-blur-[1px] md:hidden" onClick={() => setMobileOpen(false)} data-testid="overlay-mobile-sidebar" />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[286px] flex-col border-r border-sidebar-border bg-sidebar shadow-[18px_0_50px_hsl(var(--foreground)/.12)] transition-transform duration-300 md:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-[76px] items-center justify-between px-5"><span className="font-semibold tracking-[-.02em]">Orion <span className="text-primary">Chat</span></span><button onClick={() => setMobileOpen(false)} data-testid="button-close-mobile-sidebar" className="rounded-lg p-2 text-muted-foreground hover:bg-background"><X size={18} /></button></div>
-        <div className="px-3"><button onClick={() => { newChat(); setMobileOpen(false); }} data-testid="button-mobile-new-chat" className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-accent text-sm font-semibold text-accent-foreground"><Plus size={18} />New chat</button></div>
+        <div className="px-3"><button onClick={() => { newChat(); setMobileOpen(false); }} disabled={generating} data-testid="button-mobile-new-chat" className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-accent text-sm font-semibold text-accent-foreground disabled:opacity-50"><Plus size={18} />New chat</button></div>
         <p className="px-5 pb-2 pt-8 font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Recent chats</p>
-        <nav className="scrollbar-subtle flex-1 overflow-y-auto px-3">{chats.map((chat) => <button key={`mobile-${chat.id}`} onClick={() => { selectChat(chat); setMobileOpen(false); }} data-testid={`button-mobile-recent-${chat.id}`} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left ${activeChatId === chat.id ? 'bg-background shadow-sm' : 'hover:bg-background/70'}`}><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background/70 text-muted-foreground"><MessageCircle size={15} /></span><span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium">{chat.title}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{chat.preview}</span></span></button>)}</nav>
-        <div className="border-t border-sidebar-border p-3"><button onClick={() => { loggedIn ? setPanel('account') : setPanel('guest'); setMobileOpen(false); }} data-testid="button-mobile-manage-account" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground"><UserRound size={17} />Manage account</button>{loggedIn && <button onClick={() => { setAccountSection('Settings'); setPanel('account'); setMobileOpen(false); }} data-testid="button-mobile-settings" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground"><Settings size={17} />Settings</button>}</div>
+         <nav className="scrollbar-subtle flex-1 overflow-y-auto px-3">{chats.map((chat) => <div key={`mobile-${chat.id}`} className="relative">
+           <button disabled={generating} onClick={() => { if (longPressTriggeredRef.current === chat.id) { longPressTriggeredRef.current = null; return; } selectChat(chat); setMobileOpen(false); }} onContextMenu={(event) => { event.preventDefault(); longPressTriggeredRef.current = chat.id; setChatHoldId(chat.id); }} onPointerDown={() => beginChatHold(chat.id)} onPointerUp={endChatHold} onPointerLeave={endChatHold} data-testid={`button-mobile-recent-${chat.id}`} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left disabled:opacity-50 ${activeChatId === chat.id ? 'bg-background shadow-sm' : 'hover:bg-background/70'}`}><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background/70 text-muted-foreground"><MessageCircle size={15} /></span><span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium">{chat.title}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{chat.preview}</span></span></button>
+           {chatHoldId === chat.id && <div data-testid={`menu-mobile-chat-actions-${chat.id}`} className="absolute left-8 top-12 z-50 w-48 rounded-2xl border border-border bg-popover p-1.5 shadow-xl"><button onClick={() => { void shareChat(chat); setChatHoldId(null); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs hover:bg-muted"><Share2 size={14} />Share chat</button><button onClick={() => deleteChat(chat.id)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-destructive hover:bg-destructive/10"><Trash2 size={14} />Delete chat</button></div>}
+         </div>)}</nav>
+         <div className="border-t border-sidebar-border p-3"><button onClick={() => { openApps(); setMobileOpen(false); }} data-testid="button-mobile-apps" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground"><AppWindow size={17} />Apps</button><button onClick={() => { setPanel('guest'); setMobileOpen(false); }} data-testid="button-mobile-manage-account" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground"><UserRound size={17} />Manage account</button><button onClick={() => { openSettings(); setMobileOpen(false); }} data-testid="button-mobile-settings" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground"><Settings size={17} />Settings</button></div>
       </aside>
 
       <main className="relative flex min-w-0 flex-1 flex-col">
@@ -487,13 +609,13 @@ function App() {
               <span className={`relative h-4 w-7 rounded-full transition-colors ${dark ? 'bg-primary' : 'bg-secondary'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-foreground transition-transform ${dark ? 'translate-x-3.5' : 'translate-x-0.5'}`} /></span>
               <span className="hidden sm:block">{dark ? 'Dark' : 'Light'}</span>
             </button>
-            <button onClick={() => loggedIn ? setPanel('account') : setPanel('guest')} data-testid="button-user-avatar" className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border-2 border-background bg-foreground text-sm font-semibold text-background shadow-[0_0_0_1px_hsl(var(--border))] hover:scale-[1.03]">
-              {loggedIn ? (avatarImage ? <img src={avatarImage} alt="Your profile" className="h-full w-full object-cover" data-testid="img-user-avatar" /> : 'AM') : <UserRound size={17} />}
+            <button onClick={() => setPanel('guest')} data-testid="button-user-avatar" className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border-2 border-background bg-foreground text-sm font-semibold text-background shadow-[0_0_0_1px_hsl(var(--border))] hover:scale-[1.03]">
+              {avatarImage ? <img src={avatarImage} alt="Your local profile" className="h-full w-full object-cover" data-testid="img-user-avatar" /> : <UserRound size={17} />}
             </button>
           </div>
         </header>
 
-        {appScreen && <MyApps onClose={() => setAppScreen(false)} onNotice={showNotice} />}
+        {appScreen && <MyApps onClose={closeApps} onNotice={showNotice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={(input, output) => chargeTokens(input, output)} />}
 
         <section className="scrollbar-subtle flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-4 pb-44 pt-8 sm:px-8 sm:pt-12">
@@ -520,7 +642,7 @@ function App() {
 
             <div className="space-y-7">
                {messages.map((message, index) => <MessageBubble key={message.id} message={message} index={index} onCopy={copyMessage} onFeedback={(kind) => updateFeedback(message.id, kind)} onEdit={editMessage} onDelete={deleteMessage} onSelectCandidate={(candidate) => runWebSearch(message.searchQuery || message.text, candidate.title)} />)}
-              {generating && <GeneratingState step={generationStep} model={model} onStop={stopGenerating} />}
+              {generating && <GeneratingState step={generationStep} model={model} status={modelStatus} onStop={stopGenerating} />}
             </div>
             {messages.length <= 1 && !generating && <SuggestedPrompts onSelect={(value) => { setComposer(value); composerRef.current?.focus(); }} />}
           </div>
@@ -528,7 +650,7 @@ function App() {
 
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-5 pt-14 sm:pb-7">
           <div className="pointer-events-auto w-full max-w-[790px]">
-            {proLocked && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Orion Intelligence is resting.</strong> Three high-compute turns used locally.</span><span className="hidden font-mono sm:block">TRY AGAIN IN 2H 58M</span></div>}
+             {remainingTokens === 0 && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Daily local allowance used.</strong> It resets at midnight on this device.</span><span className="hidden font-mono sm:block">120K EST. TOKENS / DAY</span></div>}
             <input ref={imageRef} type="file" accept="image/*" onChange={(event) => void handleFile(event, 'image')} className="hidden" data-testid="input-image-upload" />
             <input ref={videoRef} type="file" accept="video/*" onChange={(event) => void handleFile(event, 'video')} className="hidden" data-testid="input-video-upload" />
             <input ref={documentRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,text/plain,application/pdf" onChange={(event) => void handleFile(event, 'file')} className="hidden" data-testid="input-file-upload" />
@@ -553,17 +675,16 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Orion may make mistakes.always check for accuracy</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Local model downloads once · prompts stay in this browser · verify important facts</p>
           </div>
         </div>
       </main>
 
-      {panel !== 'none' && <div className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-[2px]" onClick={() => setPanel('none')} data-testid="overlay-panel" />}
-      {panel === 'guest' && <GuestPanel onClose={() => setPanel('none')} onLogin={() => { setLoginMode('login'); setPanel('login'); }} />}
-      {panel === 'login' && <LoginPanel mode={loginMode} setMode={setLoginMode} email={loginEmail} setEmail={setLoginEmail} onClose={() => setPanel('none')} onSubmit={toggleLogin} />}
-      {panel === 'account' && <AccountPanel dark={dark} onTheme={() => setDark((value) => !value)} section={accountSection} setSection={setAccountSection} avatarImage={avatarImage} onAvatar={(src) => setAvatarImage(src)} onClose={() => setPanel('none')} onNotice={showNotice} />}
+       {settingsOpen && <SettingsCenter onClose={() => setSettingsOpen(false)} currentModel={selectedModel.name} onModelChange={(name) => { const match = (Object.keys(modelDetails) as ModelId[]).find((id) => modelDetails[id].name === name); if (match) setModel(match); }} onNotice={showNotice} apiDomainAvailable={false} tokensRemaining={remainingTokens} tokenLimit={FREE_DAILY_TOKEN_LIMIT} webSearchEnabled={webSearchAllowed} onWebSearchChange={setWebSearchAllowed} />}
+       {panel !== 'none' && <div className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-[2px]" onClick={() => setPanel('none')} data-testid="overlay-panel" />}
+      {panel === 'guest' && <GuestPanel onClose={() => setPanel('none')} onSettings={openSettings} />}
       {panel === 'sheet' && <AddSheet tab={sheetTab} setTab={setSheetTab} webSearch={webSearch} setWebSearch={setWebSearch} onChooseFile={(kind) => { setPanel('none'); window.setTimeout(() => { if (kind === 'image') imageRef.current?.click(); else if (kind === 'video') videoRef.current?.click(); else documentRef.current?.click(); }, 0); }} onClose={() => setPanel('none')} onNotice={showNotice} />}
-       {voiceOpen && <VoiceScreen selected={selectedVoice} setSelected={setSelectedVoice} listening={liveListening} setListening={setLiveListening} cameraOn={cameraOn} setCameraOn={setCameraOn} onClose={() => { setVoiceOpen(false); setLiveListening(false); setCameraOn(false); }} />}
+        {voiceOpen && <VoiceScreen selected={selectedVoice} setSelected={setSelectedVoice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={chargeTokens} listening={liveListening} setListening={setLiveListening} cameraOn={cameraOn} setCameraOn={setCameraOn} onClose={() => { setVoiceOpen(false); setLiveListening(false); setCameraOn(false); }} />}
        {essayOpen && <EssayDialog title={essayTitle} setTitle={setEssayTitle} words={essayWords} setWords={setEssayWords} onClose={() => setEssayOpen(false)} onStart={startEssay} />}
        {essayResult && <EssayResult essay={essayResult} onClose={() => setEssayResult('')} onSelect={() => { setComposer(`Please help me revise this essay:\n\n${essayResult}`); setEssayResult(''); showNotice('Essay added to the composer'); }} />}
       {notice && <div data-testid="status-toast" className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-foreground px-4 py-2.5 text-xs font-medium text-background shadow-xl animate-rise-in">{notice}</div>}
@@ -605,14 +726,14 @@ function MessageBubble({ message, index, onCopy, onFeedback, onEdit, onDelete, o
   );
 }
 
-function GeneratingState({ step, model, onStop }: { step: number; model: ModelId; onStop: () => void }) {
-  const steps = ['Listening for the shape of it', 'Planning Essay', 'Designing Essay', 'Outputting essay','Finishing up','Almost there','Checking essay for build errors'];
+function GeneratingState({ step, model, status, onStop }: { step: number; model: ModelId; status: string; onStop: () => void }) {
+  const steps = ['Thinking about your question', 'Planning Essay', 'Designing Essay', 'Outputting essay', 'Checking the draft'];
   return (
     <div data-testid="status-generating" className="flex gap-3 sm:gap-4 animate-rise-in">
       <div className="animate-breathe mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-foreground text-background"><span className="h-3.5 w-3.5 rounded-full border border-current" /></div>
       <div className="flex-1">
         <div className="mb-2 flex items-center gap-2"><span className="text-xs font-semibold">Orion</span><span className="font-mono text-[10px] text-primary">THINKING · {modelDetails[model].label.toUpperCase()}</span></div>
-         <div className="flex items-center gap-2 text-sm text-muted-foreground"><span className="flex gap-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-.2s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-.1s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" /></span><span data-testid="text-generation-step">{steps[Math.max(0, Math.min(step, steps.length - 1))]}</span></div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><span className="flex gap-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-.2s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-.1s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" /></span><span data-testid="text-generation-step">{status || steps[Math.max(0, Math.min(step, steps.length - 1))]}</span></div>
         <button onClick={onStop} data-testid="button-stop-inline" className="mt-4 flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Square size={11} fill="currentColor" />Stop generating</button>
       </div>
     </div>
@@ -630,14 +751,14 @@ function ModelMenu({ current, proUses, onSelect }: { current: ModelId; proUses: 
       <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose your thinking pace</p></div>
       {(Object.keys(modelDetails) as ModelId[]).map((id) => {
         const detail = modelDetails[id];
-        return <button key={id} onClick={() => onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' ? 'bg-primary/12 text-primary' : id === 'sting' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span>{id === 'orion' && <span data-testid="text-pro-usage" className="mt-1 block font-mono text-[9px] uppercase tracking-wider text-accent">{proUses}/3 deep turns used ·</span>}</span></button>;
+        return <button key={id} onClick={() => onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
       })}
     </div>
   );
 }
 
-function GuestPanel({ onClose, onLogin }: { onClose: () => void; onLogin: () => void }) {
-  return <SidePanel onClose={onClose} title="Your local profile"><div className="flex flex-col items-center px-4 pb-7 pt-4 text-center"><div className="grid h-20 w-20 place-items-center rounded-full border-4 border-background bg-foreground text-background shadow-[0_0_0_1px_hsl(var(--border))]"><UserRound size={30} /></div><h2 className="mt-5 text-xl font-semibold tracking-[-.03em]">You’re visiting as a guest</h2><p className="mt-2 max-w-[280px] text-sm leading-6 text-muted-foreground">Your chats stay on this device. Sign in locally to keep a profile, preferences, and workspace settings together.</p><button onClick={onLogin} data-testid="button-login-from-guest" className="mt-6 flex h-11 w-full max-w-[280px] items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background transition hover:opacity-90"><LogIn size={16} />Continue with Garexcell</button><div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground"><ShieldCheck size={14} className="text-primary" />No cloud account is required for mode</div></div></SidePanel>;
+function GuestPanel({ onClose, onSettings }: { onClose: () => void; onSettings: () => void }) {
+  return <SidePanel onClose={onClose} title="Your local profile"><div className="flex flex-col items-center px-4 pb-7 pt-4 text-center"><div className="grid h-20 w-20 place-items-center rounded-full border-4 border-background bg-foreground text-background shadow-[0_0_0_1px_hsl(var(--border))]"><UserRound size={30} /></div><h2 className="mt-5 text-xl font-semibold tracking-[-.03em]">You’re visiting as a guest</h2><p className="mt-2 max-w-[280px] text-sm leading-6 text-muted-foreground">Your chats and settings stay in this browser. A real sign-in service is not connected yet.</p><button onClick={onSettings} data-testid="button-settings-from-guest" className="mt-6 flex h-11 w-full max-w-[280px] items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background transition hover:opacity-90"><Settings size={16} />Open settings</button><div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground"><ShieldCheck size={14} className="text-primary" />Local profile · no account credentials</div></div></SidePanel>;
 }
 
 function LoginPanel({ mode, setMode, email, setEmail, onClose, onSubmit }: { mode: 'login' | 'signup'; setMode: (mode: 'login' | 'signup') => void; email: string; setEmail: (value: string) => void; onClose: () => void; onSubmit: () => void }) {
@@ -657,6 +778,12 @@ function SidePanel({ onClose, title, children }: { onClose: () => void; title: s
 
 function AddSheet({ tab, setTab, webSearch, setWebSearch, onChooseFile, onClose, onNotice }: { tab: 'add' | 'connectors'; setTab: (tab: 'add' | 'connectors') => void; webSearch: boolean; setWebSearch: (value: boolean) => void; onChooseFile: (kind: BrainAttachment['kind']) => void; onClose: () => void; onNotice: (message: string) => void }) {
   const options = [{ label: 'Image', detail: 'PNG, JPG up to 10 MB', icon: Image }, { label: 'Video', detail: 'MP4, MOV up to 50 MB', icon: Video }, { label: 'File', detail: 'PDF, DOCX, TXT up to 20 MB', icon: File }];
+  const connectors = [
+    { name: 'Gmail', detail: 'Per-user Google OAuth is not configured', notice: 'Gmail needs a secure per-user OAuth sign-in flow; none is configured yet.' },
+    { name: 'Contacts', detail: 'Browser contact picker is not wired', notice: 'Contact access needs a supported browser contact picker and a direct user action.' },
+    { name: 'SMS & calls', detail: 'Requires a mobile app or telecom provider', notice: 'Web browsers cannot read SMS or place calls on a user’s behalf.' },
+    { name: 'Orion API', detail: 'Requested API domain did not resolve', notice: 'api.garexcell.com did not resolve in the environment check; no API key was issued.' },
+  ];
   return <div className="fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-[680px] rounded-t-[28px] border border-b-0 border-border bg-card shadow-[0_-18px_60px_hsl(var(--foreground)/.16)] animate-rise-in">
     <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-border" />
     <div className="flex items-center justify-between px-5 pb-2 pt-4">
@@ -681,7 +808,7 @@ function AddSheet({ tab, setTab, webSearch, setWebSearch, onChooseFile, onClose,
         </button>
       </div>
     ) : (
-      <div className="grid gap-3 p-5 sm:grid-cols-2">{['Garexcell', 'FSMEC', 'Google drive','Calendar', 'Dropbox'].map((name) => <button key={name} onClick={() => onNotice(`${name} connector is ready for a local integration`)} data-testid={`button-connector-${name.toLowerCase()}`} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:border-primary/40 hover:bg-muted"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><UsersRound size={17} /></span><span><span className="block text-xs font-semibold">{name}</span><span className="mt-1 block text-[10px] text-muted-foreground">Local placeholder · connect later</span></span><ChevronRight size={15} className="ml-auto text-muted-foreground" /></button>)}</div>
+      <div className="grid gap-3 p-5 sm:grid-cols-2">{connectors.map(({ name, detail, notice }) => <button key={name} onClick={() => onNotice(notice)} data-testid={`button-connector-${name.toLowerCase().replaceAll(' ', '-')}`} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:border-primary/40 hover:bg-muted"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><UsersRound size={17} /></span><span><span className="block text-xs font-semibold">{name}</span><span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{detail}</span></span><ChevronRight size={15} className="ml-auto shrink-0 text-muted-foreground" /></button>)}</div>
     )}
     <div className="h-3" />
   </div>;
@@ -698,51 +825,170 @@ function ChatMenu({ onAction, onClear }: { onAction: (action: 'search' | 'media'
 
 function ChatInspector({ action, query, setQuery, messages, onClose, onNotice }: { action: 'search' | 'media' | 'notifications'; query: string; setQuery: (value: string) => void; messages: Message[]; onClose: () => void; onNotice: (message: string) => void }) {
   const attachments = messages.filter((message) => message.attachment);
+  const links = [...new Set(messages.flatMap((message) => message.text.match(/https?:\/\/[^\s)]+/g) || []))];
   const results = messages.filter((message) => message.role === 'assistant' && message.text.toLowerCase().includes(query.toLowerCase()));
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) {
+      onNotice('Browser notifications are not supported here.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    onNotice(permission === 'granted' ? 'Browser permission granted. Background chat alerts still need a notification service.' : 'Notification permission was not granted.');
+  };
   return <div className="mb-7 rounded-2xl border border-border bg-card p-4 shadow-sm animate-rise-in">
     <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-xs font-semibold">{action === 'search' ? <Search size={14} className="text-primary" /> : action === 'media' ? <Image size={14} className="text-primary" /> : <Bell size={14} className="text-primary" />}{action === 'search' ? 'Search this chat' : action === 'media' ? 'Media And Links' : 'Notifications'}</div><button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={15} /></button></div>
     {action === 'search' && <><div className="relative mt-3"><Search size={14} className="absolute left-3 top-3 text-muted-foreground" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search words from Orion’s replies…" data-testid="input-search-chat" className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-xs outline-none focus:border-primary" /></div><div className="mt-3 space-y-2">{query ? (results.length ? results.map((message) => <p key={message.id} className="rounded-xl bg-muted p-3 text-xs leading-5">{message.text}</p>) : <p className="text-xs text-muted-foreground">No Orion reply contains “{query}”.</p>) : <p className="text-xs text-muted-foreground">Type a keyword to search only assistant replies in this thread.</p>}</div></>}
-    {action === 'media' && <div className="mt-3">{attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((message) => <span key={message.id} className="rounded-lg bg-muted px-3 py-2 text-xs"><Paperclip size={12} className="mr-1 inline" />{message.attachment?.name}</span>)}</div> : <p className="text-xs text-muted-foreground">No media or links have been added to this chat yet.</p>}</div>}
-    {action === 'notifications' && <div className="mt-3 flex items-center justify-between rounded-xl bg-muted p-3 text-xs"><span>Local notifications for this chat</span><button onClick={() => onNotice('Notifications enabled for this chat')} className="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground">Enable</button></div>}
+    {action === 'media' && <div className="mt-3 space-y-3">{attachments.length > 0 && <div className="flex flex-wrap gap-2">{attachments.map((message) => <span key={message.id} className="rounded-lg bg-muted px-3 py-2 text-xs"><Paperclip size={12} className="mr-1 inline" />{message.attachment?.name}</span>)}</div>}{links.length > 0 && <div className="space-y-2">{links.map((link) => <a key={link} href={link} target="_blank" rel="noreferrer" className="block truncate rounded-lg bg-muted px-3 py-2 text-xs text-primary">{link}</a>)}</div>}{attachments.length === 0 && links.length === 0 && <p className="text-xs text-muted-foreground">No media or links have been added to this chat yet.</p>}</div>}
+    {action === 'notifications' && <div className="mt-3 flex items-center justify-between rounded-xl bg-muted p-3 text-xs"><span>Browser notifications</span><button onClick={() => void enableNotifications()} className="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground">Request permission</button></div>}
   </div>;
 }
 
-function VoiceScreen({ selected, setSelected, listening, setListening, cameraOn, setCameraOn, onClose }: { selected: string; setSelected: (voice: string) => void; listening: boolean; setListening: (value: boolean) => void; cameraOn: boolean; setCameraOn: (value: boolean) => void; onClose: () => void }) {
-  const voices = [{ name: 'June', detail: 'Warm · measured' }, { name: 'Rowan', detail: 'Clear · grounded' }, { name: 'Mira', detail: 'Soft · curious' }];
+function VoiceScreen({ selected, setSelected, model, systemPrompt, remainingTokens, onConsumeTokens, listening, setListening, cameraOn, setCameraOn, onClose }: { selected: string; setSelected: (voice: string) => void; model: ModelId; systemPrompt: string; remainingTokens: number; onConsumeTokens: (input: string, output: string) => number; listening: boolean; setListening: (value: boolean) => void; cameraOn: boolean; setCameraOn: (value: boolean) => void; onClose: () => void }) {
+  const [deviceVoices, setDeviceVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const voices = deviceVoices.filter((voice) => !/google/i.test(voice.name) && voice.lang.toLowerCase().startsWith('en')).slice(0, 3);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraPaused, setCameraPaused] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [caption, setCaption] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [manualInput, setManualInput] = useState('');
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const [voiceError, setVoiceError] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
-  const recognitionRef = useRef<{ start: () => void; stop: () => void; onresult?: (event: any) => void; onend?: () => void } | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const busyRef = useRef(false);
+  const listeningRef = useRef(listening);
+  const remainingTokensRef = useRef(remainingTokens);
+  const consumeTokensRef = useRef(onConsumeTokens);
+  listeningRef.current = listening;
+  remainingTokensRef.current = remainingTokens;
+  consumeTokensRef.current = onConsumeTokens;
+
+  useEffect(() => {
+    if (!window.speechSynthesis) return;
+    const updateVoices = () => setDeviceVoices(window.speechSynthesis.getVoices());
+    updateVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', updateVoices);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', updateVoices);
+  }, []);
+
+  const speak = (text: string) => {
+    if (!window.speechSynthesis || !('SpeechSynthesisUtterance' in window)) {
+      busyRef.current = false;
+      setBusy(false);
+      setVoiceError('This browser has no speech output voice available. You can still read the captions.');
+      if (listeningRef.current) {
+        try { recognitionRef.current?.start(); } catch { /* Already listening. */ }
+      }
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.97;
+    const available = window.speechSynthesis.getVoices();
+    const localVoice = available.find((voice) => voice.name === selected && !/google/i.test(voice.name))
+      || available.find((voice) => !/google/i.test(voice.name) && voice.lang.toLowerCase().startsWith('en') && /natural|enhanced|neural/i.test(voice.name))
+      || available.find((voice) => !/google/i.test(voice.name) && voice.lang.toLowerCase().startsWith('en'))
+      || null;
+    if (!localVoice) {
+      busyRef.current = false;
+      setBusy(false);
+      setVoiceError('No non-Google English voice is available in this browser. Read the captions or choose a device voice in browser settings.');
+      if (listeningRef.current) {
+        try { recognitionRef.current?.start(); } catch { /* Already listening. */ }
+      }
+      return;
+    }
+    utterance.voice = localVoice;
+    const resumeListening = () => {
+      busyRef.current = false;
+      setBusy(false);
+      if (listeningRef.current) {
+        try { recognitionRef.current?.start(); } catch { /* Already listening. */ }
+      }
+    };
+    utterance.onend = resumeListening;
+    utterance.onerror = resumeListening;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const askLocally = async (spoken: string) => {
+    const question = spoken.trim();
+    if (!question || busyRef.current) return;
+    if (remainingTokensRef.current <= 0) {
+      setCaption('Today’s free local model allowance is used. It resets at midnight on this device.');
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    setTranscript(question);
+    setCaption('Orion is thinking…');
+    setVoiceError('');
+    recognitionRef.current?.stop();
+    try {
+      const guardrail = orionResponse(question);
+      if (guardrail.blocked || guardrail.policy || /(suicide|kill myself|harm myself|end my life|self[- ]harm|want(?:ing)? to die)/i.test(question)) {
+        setCaption(guardrail.text);
+        consumeTokensRef.current(question, guardrail.text);
+        speak(guardrail.text);
+        return;
+      }
+      const answer = await generateLocalResponse(question, {
+        model,
+        systemPrompt,
+        temperature: readStore('orion-settings-creativity', 0.6),
+        onProgress: (status: string) => setCaption(status),
+      });
+      consumeTokensRef.current(question, answer);
+      setCaption(answer);
+      speak(answer);
+    } catch {
+      setCaption('The local model could not load. Check your connection and try again.');
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!listening) {
       recognitionRef.current?.stop();
       window.speechSynthesis?.cancel();
+      busyRef.current = false;
+      setBusy(false);
       return;
     }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.onresult = (event: any) => {
-        const latest = event.results[event.results.length - 1][0].transcript;
-        setTranscript(latest);
-        if (event.results[event.results.length - 1].isFinal && window.speechSynthesis) {
-          const utterance = new SpeechSynthesisUtterance(`I heard you say: ${latest}`);
-          utterance.rate = 0.96;
-          window.speechSynthesis.speak(utterance);
-        }
-      };
-      recognition.onend = () => { if (listening) { try { recognition.start(); } catch { /* browser already restarted */ } } };
-      recognition.start();
-      recognitionRef.current = recognition;
-    } else {
-      setTranscript('Speech recognition is not available in this browser. You can still use the voice and camera controls.');
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      setVoiceError('Speech recognition is not available in this browser. Type a question below to use the local assistant.');
+      return;
     }
-    return () => { recognitionRef.current?.stop(); window.speechSynthesis?.cancel(); };
-  }, [listening]);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+    recognition.onresult = (event: any) => {
+      const result = event.results[event.results.length - 1];
+      const words = result?.[0]?.transcript || '';
+      setTranscript(words);
+      if (result?.isFinal) void askLocally(words);
+    };
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') setVoiceError(`Speech recognition: ${event.error}`);
+    };
+    recognition.onend = () => {
+      if (listeningRef.current && !busyRef.current) {
+        try { recognition.start(); } catch { /* The browser may already have restarted recognition. */ }
+      }
+    };
+    recognitionRef.current = recognition;
+    try { recognition.start(); } catch { setVoiceError('Allow microphone access in your browser to start voice chat.'); }
+    return () => {
+      recognitionRef.current = null;
+      recognition.stop();
+      window.speechSynthesis?.cancel();
+    };
+  }, [listening, model, selected]);
 
   useEffect(() => {
     if (!cameraOn) {
@@ -751,28 +997,35 @@ function VoiceScreen({ selected, setSelected, listening, setListening, cameraOn,
       if (videoRef.current) videoRef.current.srcObject = null;
       return;
     }
-    void navigator.mediaDevices?.getUserMedia({ video: true, audio: false }).then((stream) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError('Camera access is not available in this browser.');
+      setCameraOn(false);
+      return;
+    }
+    void navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then((stream) => {
       setCameraStream(stream);
       if (videoRef.current) videoRef.current.srcObject = stream;
-    }).catch(() => setCameraOn(false));
+    }).catch((error) => {
+      setVoiceError(error instanceof Error ? error.message : 'Camera permission was not granted.');
+      setCameraOn(false);
+    });
   }, [cameraOn]);
-
-  useEffect(() => {
-    cameraStream?.getVideoTracks().forEach((track) => { track.enabled = !cameraPaused; });
-  }, [cameraPaused, cameraStream]);
-
+  useEffect(() => { cameraStream?.getVideoTracks().forEach((track) => { track.enabled = !cameraPaused; }); }, [cameraPaused, cameraStream]);
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   return <div className={`fixed inset-0 z-[60] flex flex-col bg-background animate-rise-in ${listening || cameraOn ? 'voice-live-glow' : ''}`}>
     <div className="flex h-[76px] items-center justify-between border-b border-border px-5 sm:px-10"><button onClick={onClose} data-testid="button-close-voice" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground hover:bg-muted"><ChevronLeft size={18} />Back to chat</button><span className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Live voice chat</span><button onClick={onClose} data-testid="button-close-voice-x" className="rounded-xl p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
-    <div className="relative mx-auto flex w-full max-w-[780px] flex-1 flex-col items-center justify-center overflow-hidden px-5">
+    <div className="relative mx-auto flex w-full max-w-[780px] flex-1 flex-col items-center justify-center overflow-y-auto px-5 py-8">
       {cameraOn && <video ref={videoRef} autoPlay muted playsInline data-testid="video-live-camera" className="mb-6 h-36 w-56 rounded-2xl border border-primary/40 object-cover shadow-xl" />}
-      <div className={`relative grid h-48 w-48 place-items-center rounded-full border border-primary/40 bg-card shadow-[0_0_0_18px_hsl(var(--primary)/.04),0_0_80px_hsl(var(--primary)/.14)] ${listening ? 'animate-breathe' : ''}`}><div className="absolute inset-4 rounded-full border border-primary/20" /><div className="absolute inset-8 rounded-full border border-accent/20" /><span className="relative grid h-20 w-20 place-items-center rounded-full bg-foreground text-background"><span className="h-8 w-8 rounded-full border-2 border-current" /></span></div>
-      <p className="mt-12 font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">{listening ? 'Orion is listening' : 'A quiet space to speak'}</p><h1 data-testid="text-voice-title" className="mt-2 text-center font-serif text-4xl italic tracking-[-.03em]">Where should we begin?</h1>
-      {transcript && <p className="mt-5 max-w-md text-center text-sm leading-6 text-muted-foreground">“{transcript}”</p>}
-      <div className="mt-8 flex flex-wrap justify-center gap-2">{voices.map((voice) => <button key={voice.name} onClick={() => setSelected(voice.name)} data-testid={`button-voice-${voice.name.toLowerCase()}`} className={`rounded-full border px-4 py-2 text-left transition ${selected === voice.name ? 'border-primary bg-primary/10' : 'border-border bg-card hover:border-primary/40'}`}><span className="block text-xs font-semibold">{voice.name}</span><span className="text-[10px] text-muted-foreground">{voice.detail}</span></button>)}</div>
-      <div className="mt-9 flex items-center gap-3"><button onClick={() => setListening(!listening)} data-testid="button-toggle-listening" className={`grid h-16 w-16 place-items-center rounded-full transition hover:scale-105 ${listening ? 'bg-accent text-accent-foreground' : 'bg-foreground text-background'}`}>{listening ? <Square size={19} fill="currentColor" /> : <Mic size={22} />}</button><button onClick={() => setCameraOn(!cameraOn)} data-testid="button-toggle-camera" className={`grid h-12 w-12 place-items-center rounded-full border transition hover:scale-105 ${cameraOn ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground'}`} aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}>{cameraOn ? <CameraOff size={19} /> : <Camera size={19} />}</button>{cameraOn && <button onClick={() => setCameraPaused(!cameraPaused)} data-testid="button-pause-camera" className={`grid h-12 w-12 place-items-center rounded-full border transition hover:scale-105 ${cameraPaused ? 'border-accent bg-accent/10 text-accent' : 'border-border bg-card text-muted-foreground'}`} aria-label={cameraPaused ? 'Resume camera' : 'Pause camera'}>{cameraPaused ? <Video size={18} /> : <Pause size={18} />}</button>}<button onClick={() => { if (transcript && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(`Here’s what I heard: ${transcript}`)); }} className="grid h-12 w-12 place-items-center rounded-full border border-border bg-card text-muted-foreground hover:bg-muted" aria-label="Speak response"><Volume2 size={18} /></button></div>
-      <p className="mt-3 text-xs text-muted-foreground">{listening ? 'Tap the mic to pause' : `Speak with ${selected}`}{cameraOn ? ' · camera on' : ''}</p>
+      <div className={`relative grid h-40 w-40 shrink-0 place-items-center rounded-full border border-primary/40 bg-card shadow-[0_0_0_18px_hsl(var(--primary)/.04),0_0_80px_hsl(var(--primary)/.14)] ${listening || busy ? 'animate-breathe' : ''}`}><div className="absolute inset-4 rounded-full border border-primary/20" /><div className="absolute inset-8 rounded-full border border-accent/20" /><span className="relative grid h-20 w-20 place-items-center rounded-full bg-foreground text-background"><span className="h-8 w-8 rounded-full border-2 border-current" /></span></div>
+      <p className="mt-8 font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">{busy ? 'Orion is responding' : listening ? 'Listening for your question' : 'Live voice is paused'}</p>
+      <h1 data-testid="text-voice-title" className="mt-2 text-center font-serif text-4xl italic tracking-[-.03em]">{busy ? 'One moment…' : transcript ? 'I’m listening.' : 'Where should we begin?'}</h1>
+      {(caption || transcript) && <div aria-live="polite" data-testid="text-voice-caption" className="mt-5 max-h-36 max-w-xl overflow-y-auto rounded-2xl border border-border bg-card/80 p-4 text-center text-sm leading-6 text-foreground/80">{caption || transcript}</div>}
+      {voiceError && <p role="status" className="mt-3 max-w-md text-center text-xs leading-5 text-destructive">{voiceError}</p>}
+       <div className="mt-6 flex flex-wrap justify-center gap-2">{voices.map((voice) => <button key={voice.name} onClick={() => setSelected(voice.name)} data-testid={`button-voice-${voice.name.toLowerCase().replaceAll(' ', '-')}`} className={`rounded-full border px-4 py-2 text-left transition ${selected === voice.name ? 'border-primary bg-primary/10' : 'border-border bg-card hover:border-primary/40'}`}><span className="block text-xs font-semibold">{voice.name}</span><span className="text-[10px] text-muted-foreground">{voice.lang}</span></button>)}</div>{voices.length === 0 && <p className="mt-5 text-center text-xs text-muted-foreground">No non-Google English device voices found. Captions remain available.</p>}
+      {(!speechSupported || !listening) && <form onSubmit={(event) => { event.preventDefault(); void askLocally(manualInput); setManualInput(''); }} className="mt-5 flex w-full max-w-lg gap-2"><input value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder="Type a question for the local assistant" className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none focus:border-primary" /><button type="submit" disabled={!manualInput.trim() || busy} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-foreground text-background disabled:opacity-40" aria-label="Send voice question"><ArrowUp size={17} /></button></form>}
+      <div className="mt-7 flex items-center gap-3"><button onClick={() => setListening(!listening)} data-testid="button-toggle-listening" className={`grid h-16 w-16 place-items-center rounded-full transition hover:scale-105 ${listening ? 'bg-accent text-accent-foreground' : 'bg-foreground text-background'}`} aria-label={listening ? 'Pause voice chat' : 'Start voice chat'}>{listening ? <Square size={19} fill="currentColor" /> : <Mic size={22} />}</button><button onClick={() => setCameraOn(!cameraOn)} data-testid="button-toggle-camera" className={`grid h-12 w-12 place-items-center rounded-full border transition hover:scale-105 ${cameraOn ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground'}`} aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}>{cameraOn ? <CameraOff size={19} /> : <Camera size={19} />}</button>{cameraOn && <button onClick={() => setCameraPaused(!cameraPaused)} data-testid="button-pause-camera" className={`grid h-12 w-12 place-items-center rounded-full border transition hover:scale-105 ${cameraPaused ? 'border-accent bg-accent/10 text-accent' : 'border-border bg-card text-muted-foreground'}`} aria-label={cameraPaused ? 'Resume camera' : 'Pause camera'}>{cameraPaused ? <Video size={18} /> : <Pause size={18} />}</button>}<button onClick={() => caption && speak(caption)} className="grid h-12 w-12 place-items-center rounded-full border border-border bg-card text-muted-foreground hover:bg-muted" aria-label="Speak the current caption"><Volume2 size={18} /></button></div>
+       <p className="mt-3 text-center text-xs text-muted-foreground">Speech recognition uses your browser’s service. Orion’s model replies stay local; captions remain visible.</p>
     </div>
   </div>;
 }
