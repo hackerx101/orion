@@ -358,7 +358,7 @@ function App() {
       return;
     }
     setGenerating(true);
-    setModelStatus('Preparing cloud intelligence');
+    setModelStatus('Thinking through your request');
     const requestId = ++requestIdRef.current;
     if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use cloud intelligence.');
     if (webSearch && webSearchAllowed) {
@@ -443,7 +443,7 @@ function App() {
       setGenerating(false);
       setGenerationStep(0);
       setModelStatus('');
-      showNotice('The local essay model could not be loaded. Check your connection and try again.');
+      showNotice('That request could not finish. Please try again.');
     });
   };
 
@@ -671,7 +671,7 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Cloud AI · usage is metered daily · verify important facts</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center text-[11px] text-muted-foreground/70">Orion may produce incorrect information. Verify accuracy.</p>
           </div>
         </div>
       </main>

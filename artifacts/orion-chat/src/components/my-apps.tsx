@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  Brain,
   Check,
   CheckCircle2,
   Code2,
@@ -44,6 +45,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
   const [step, setStep] = useState(0);
   const [plan, setPlan] = useState<AppBuildPlan | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [studioTab, setStudioTab] = useState<'chat' | 'preview'>('chat');
   const [agentActivity, setAgentActivity] = useState('');
   const [buildError, setBuildError] = useState('');
 
@@ -71,8 +73,8 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
     setBuildError('');
     setAgentActivity('Reading your app brief');
     setStage('building');
-    onNotice('Cloud intelligence is starting your app build');
-    const appPrompt = `Create a polished ${appTypes.find((item) => item.id === appType)?.label} as one complete, self-contained HTML file with embedded CSS and JavaScript. The code will be shown to the user and run in a sandboxed browser preview. Use no remote libraries, external requests, external fonts, or backend services. Include useful interaction, accessible labels, responsive styling, and realistic sample data. Return ONLY the complete HTML document with no markdown fences or explanation. User brief: ${prompt.trim()}`;
+    onNotice('Orion is starting your app build');
+    const appPrompt = `Create a polished ${appTypes.find((item) => item.id === appType)?.label} as one complete, self-contained HTML file with embedded CSS and JavaScript. The result will open in the Preview tab. Use no remote libraries, external requests, external fonts, or backend services. Include useful interaction, accessible labels, responsive styling, and realistic sample data. Return ONLY the complete HTML document with no markdown fences or explanation. User brief: ${prompt.trim()}`;
     setAgentActivity('Planning the first version');
     setStep(1);
     try {
@@ -123,14 +125,17 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
   };
 
   return (
-    <section className="absolute inset-0 z-30 overflow-y-auto bg-background animate-rise-in" data-testid="screen-my-apps">
+    <section className="fixed inset-0 z-[60] overflow-y-auto bg-background animate-rise-in" data-testid="screen-my-apps">
       <div className="mx-auto min-h-full w-full max-w-[1120px] px-5 pb-16 pt-6 sm:px-10 sm:pt-10">
         <div className="flex items-center justify-between gap-4">
           <button onClick={onClose} data-testid="button-back-to-chat" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground">
             <ArrowLeft size={17} />
             Back to chat
           </button>
-          <span className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Orion studio</span>
+          <nav aria-label="App Studio" className="flex rounded-xl border border-border bg-muted/50 p-1">
+            <button onClick={() => setStudioTab('chat')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${studioTab === 'chat' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Chat</button>
+            <button onClick={() => { setStudioTab('preview'); if (plan) setPreviewOpen(true); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${studioTab === 'preview' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Preview</button>
+          </nav>
         </div>
 
         <div className="mt-12 grid gap-10 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
@@ -206,7 +211,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                     <FolderOpen size={25} />
                   </div>
                   <p className="mt-5 text-sm font-semibold">Your build plan will appear here</p>
-                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">The progress stays visible while Orion turns your prompt into something you can explore in a sandboxed preview.</p>
+                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">You will see each step while Orion turns your words into a working app.</p>
                 </div>
               </div>
             ) : (
@@ -223,14 +228,14 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                   ))}
                 </div>
 
-                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working through the build…'}</div>}
+                {stage === 'building' && <div role="status" className="mt-5 flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs text-primary"><Brain size={15} className="shrink-0" /><span>{agentActivity || 'Working through the build…'}</span></div>}
                 {stage === 'complete' && plan && (
                   <div className="mt-6 border-t border-border/70 pt-5">
                     <div className="flex items-start gap-3">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><FileCode2 size={17} /></span>
                       <div>
                         <p className="text-sm font-semibold">{plan.summary}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">A small, editable first pass is ready. Use the preview to see it rendered, or inspect the files before you continue.</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Your first version is ready. Open Preview to try it, then keep improving it in Chat.</p>
                       </div>
                     </div>
                     <div className="mt-5 grid gap-2">
