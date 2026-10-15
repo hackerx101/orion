@@ -52,7 +52,7 @@ import { orionResponse, type BrainAttachment } from '@/lib/orion-brain';
 import { generateLocalResponse, generateLocalResponseSync, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
 import { searchWeb, type WebCandidate, type WebSearchResult, type WebSource } from '@/lib/web-search';
 
-type ModelId = 'flash' | 'sting' | 'orion' | 'orion-pro' | 'crimson-crush' | 'crimson-lite' | 'crimson-pro';
+type ModelId = 'lite' | 'flash' | 'flash-max' | 'orion';
 type Panel = 'none' | 'guest' | 'login' | 'account' | 'sheet';
 type Role = 'user' | 'assistant';
 type Message = {
@@ -72,17 +72,14 @@ type Chat = { id: string; title: string; preview: string; time: string };
 const nowTime = () =>
   new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date());
 
-const modelDetails: Record<ModelId, { name: string; label: string; description: string; color: string }> = {
-  flash: { name: 'Scorpio Flash 1.0', label: 'Fast local model', description: 'Small Qwen instruction model for quick everyday replies.', color: 'cyan' },
-  sting: { name: 'Scorpio Sting', label: 'Balanced local model', description: 'Uses a larger free local model; replies take at least 20 seconds.', color: 'violet' },
-  orion: { name: 'Orion Intelligence', label: 'Local assistant', description: 'A local model preset for more considered answers.', color: 'rose' },
-  'orion-pro': { name: 'Orion Pro', label: 'Large local model', description: 'Uses a 3B-parameter free model; first download is about 3.4 GB and needs several GB of memory.', color: 'rose' },
-  'crimson-crush': { name: 'Crimson Crush 1.5', label: 'Large local model', description: 'Creative preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'violet' },
-  'crimson-lite': { name: 'Crimson Lite', label: 'Light local model', description: 'Small SmolLM instruction model for a lighter footprint.', color: 'cyan' },
-  'crimson-pro': { name: 'Crimson 1.8 Pro', label: 'Large local model', description: 'Extended preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'rose' },
+const modelDetails: Record<ModelId, { name: string; label: string; description: string; color: string; context: string; locked?: boolean }> = {
+  lite: { name: 'Scorpio Lite', label: 'Focused builder', description: 'Fixes focused code lines and creates small features.', color: 'cyan', context: '120K context' },
+  flash: { name: 'Scorpio Flash', label: 'Fast, efficient task execution', description: 'Fast, efficient task execution.', color: 'violet', context: '900K context' },
+  'flash-max': { name: 'Scorpio Flash Max', label: 'Extended build reasoning', description: 'Handles heavier builds with a wider working context.', color: 'violet', context: '900K context', locked: true },
+  orion: { name: 'Orion Intelligence', label: 'Complex problem solving', description: 'Designed for high-complexity tasks and large projects.', color: 'rose', context: '1M context', locked: true },
 };
 
-const FREE_DAILY_TOKEN_LIMIT = 120_000;
+const FREE_DAILY_TOKEN_LIMIT = 5_000_000; // $5 daily credit, estimated from token usage
 const localDayKey = () => new Date().toLocaleDateString('en-CA');
 const readDailyUsage = () => {
   const saved = readStore<{ day: string; used: number }>('orion-local-usage', { day: localDayKey(), used: 0 });
@@ -190,7 +187,7 @@ function App() {
   }, []);
 
   const selectedModel = modelDetails[model];
-  const proLocked = false;
+  const proLocked = Boolean(selectedModel.locked) && !loggedIn;
   const remainingTokens = Math.max(0, FREE_DAILY_TOKEN_LIMIT - usedTokens);
 
   const openApps = () => {
@@ -334,7 +331,7 @@ function App() {
     const prompt = (override ?? composer).trim();
     if ((!prompt && !attachment) || generating || proLocked) return;
     if (remainingTokens <= 0 && !(webSearch && webSearchAllowed)) {
-      showNotice('Today’s free local model allowance is used. It resets at midnight on this device.');
+      showNotice('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     if (/(essay|paragraph|article|write about)/i.test(prompt) && !override) {
@@ -361,15 +358,15 @@ function App() {
       return;
     }
     setGenerating(true);
-    setModelStatus('Waiting for local model');
+    setModelStatus('Preparing cloud intelligence');
     const requestId = ++requestIdRef.current;
-    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use the local model.');
+    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use cloud intelligence.');
     if (webSearch && webSearchAllowed) {
       timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
       return;
     }
-    if (model === 'orion' || model === 'orion-pro' || model === 'crimson-pro') setProUses((count) => count + 1);
-    const delay = model === 'flash' || model === 'crimson-lite' ? 250 : model === 'sting' ? 0 : 900;
+    if (model === 'orion' || model === 'flash-max') setProUses((count) => count + 1);
+    const delay = model === 'lite' ? 250 : model === 'flash' ? 0 : 900;
     timerRef.current = window.setTimeout(() => {
       const startedAt = Date.now();
       void generateLocalResponse(question, {
@@ -565,7 +562,7 @@ function App() {
           {expanded && <div className="mb-2 flex items-center justify-between px-2"><span className="font-mono text-[10px] font-medium uppercase tracking-[.18em] text-muted-foreground">Workspace</span><Sparkles size={13} className="text-primary" /></div>}
           <button onClick={openApps} disabled={generating} data-testid="button-open-apps" className={`flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><AppWindow size={16} /></span>
-            {expanded && <span><span className="block text-sm font-semibold">Apps</span><span className="block text-[11px] text-muted-foreground">Open the local app builder</span></span>}
+            {expanded && <span><span className="block text-sm font-semibold">Apps</span><span className="block text-[11px] text-muted-foreground">Open the app builder</span></span>}
           </button>
           <button onClick={openApps} disabled={generating} data-testid="button-create-app" className={`mt-1 flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-muted-foreground"><Plus size={16} /></span>
@@ -575,7 +572,7 @@ function App() {
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 rounded-xl bg-background/65 p-3">
-              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free local allowance</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
+              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free daily credit</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
               <div className="mt-2 h-1 rounded-full bg-border"><div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, remainingTokens / FREE_DAILY_TOKEN_LIMIT * 100))}%` }} /></div>
               <p className="mt-1.5 text-[9px] leading-4 text-muted-foreground">Approximate tokens · resets at midnight locally</p>
             </div>
@@ -602,7 +599,7 @@ function App() {
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} data-testid="button-mobile-menu" className="rounded-xl p-2 text-muted-foreground hover:bg-muted md:hidden"><Menu size={20} /></button>
             <div className="md:hidden"><span className="font-semibold">Orion <span className="text-primary">Chat</span></span></div>
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-primary" />Local-first workspace</div>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-primary" />Cloud workspace</div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setDark((value) => !value)} data-testid="button-theme-toggle" className="group flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-sm transition hover:border-primary/30 hover:text-foreground">
@@ -650,7 +647,7 @@ function App() {
 
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-5 pt-14 sm:pb-7">
           <div className="pointer-events-auto w-full max-w-[790px]">
-             {remainingTokens === 0 && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Daily local allowance used.</strong> It resets at midnight on this device.</span><span className="hidden font-mono sm:block">120K EST. TOKENS / DAY</span></div>}
+             {remainingTokens === 0 && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Daily credit used.</strong> It resets at midnight on this device.</span><span className="hidden font-mono sm:block">120K EST. TOKENS / DAY</span></div>}
             <input ref={imageRef} type="file" accept="image/*" onChange={(event) => void handleFile(event, 'image')} className="hidden" data-testid="input-image-upload" />
             <input ref={videoRef} type="file" accept="video/*" onChange={(event) => void handleFile(event, 'video')} className="hidden" data-testid="input-video-upload" />
             <input ref={documentRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,text/plain,application/pdf" onChange={(event) => void handleFile(event, 'file')} className="hidden" data-testid="input-file-upload" />
@@ -664,7 +661,7 @@ function App() {
                     <button onClick={() => setVoiceOpen(true)} data-testid="button-live-voice" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><Mic size={16} /><span className="hidden text-xs font-medium sm:inline">Live voice</span></button>
                     <span className="hidden h-4 w-px bg-border sm:block" />
                     <div className="relative">
-                      <button onClick={() => setModelOpen((value) => !value)} data-testid="button-model-selector" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><span className={`grid h-5 w-5 place-items-center rounded-full ${model === 'flash' ? 'bg-primary/15 text-primary' : model === 'sting' ? 'bg-violet-500/15 text-violet-500' : 'bg-accent/15 text-accent'}`}><Sparkles size={12} /></span><span className="hidden text-xs font-medium sm:inline">{selectedModel.name.replace('Scorpio ', '')}</span><ChevronDown size={13} /></button>
+                      <button onClick={() => setModelOpen((value) => !value)} data-testid="button-model-selector" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><span className={`grid h-5 w-5 place-items-center rounded-full ${model === 'lite' ? 'bg-primary/15 text-primary' : model === 'flash' || model === 'flash-max' ? 'bg-violet-500/15 text-violet-500' : 'bg-accent/15 text-accent'}`}><Sparkles size={12} /></span><span className="hidden text-xs font-medium sm:inline">{selectedModel.name.replace('Scorpio ', '')}</span><ChevronDown size={13} /></button>
                       {modelOpen && <ModelMenu current={model} proUses={proUses} onSelect={(value) => { setModel(value); setModelOpen(false); }} />}
                     </div>
                   </div>
@@ -675,7 +672,7 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Local model downloads once · prompts stay in this browser · verify important facts</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Cloud AI · usage is metered daily · verify important facts</p>
           </div>
         </div>
       </main>
@@ -748,10 +745,10 @@ function SuggestedPrompts({ onSelect }: { onSelect: (value: string) => void }) {
 function ModelMenu({ current, proUses, onSelect }: { current: ModelId; proUses: number; onSelect: (model: ModelId) => void }) {
   return (
     <div data-testid="menu-models" className="absolute bottom-12 left-0 z-30 w-[290px] rounded-2xl border border-border bg-popover p-2 shadow-[0_18px_50px_hsl(var(--foreground)/.15)]">
-      <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose your thinking pace</p></div>
+      <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose a model</p><p className="mt-1 text-[10px] text-muted-foreground">Free access includes Scorpio Lite</p></div>
       {(Object.keys(modelDetails) as ModelId[]).map((id) => {
         const detail = modelDetails[id];
-        return <button key={id} onClick={() => onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
+        return <button key={id} onClick={() => detail.locked && !readStore('orion-logged-in', false) ? undefined : onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
       })}
     </div>
   );
@@ -916,7 +913,7 @@ function VoiceScreen({ selected, setSelected, model, systemPrompt, remainingToke
     const question = spoken.trim();
     if (!question || busyRef.current) return;
     if (remainingTokensRef.current <= 0) {
-      setCaption('Today’s free local model allowance is used. It resets at midnight on this device.');
+      setCaption('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     busyRef.current = true;
@@ -943,7 +940,7 @@ function VoiceScreen({ selected, setSelected, model, systemPrompt, remainingToke
       setCaption(answer);
       speak(answer);
     } catch {
-      setCaption('The local model could not load. Check your connection and try again.');
+      setCaption('Cloud AI could not respond. Check the Workers AI connection and try again.');
       busyRef.current = false;
       setBusy(false);
     }

@@ -39,13 +39,10 @@ type SettingsCenterProps = {
 type SectionId = 'account' | 'ai' | 'privacy' | 'integrations' | 'general';
 
 const models = [
-  { name: 'Scorpio Flash 1.0', note: 'Qwen 0.5B · fastest', mark: '01' },
-  { name: 'Scorpio Sting', note: 'Llama 1B · at least 20 seconds', mark: '02' },
-  { name: 'Orion Intelligence', note: 'Llama 1B · considered replies', mark: '03' },
-  { name: 'Orion Pro', note: 'Llama 3B · about 3.4 GB download', mark: '04' },
-  { name: 'Crimson Crush 1.5', note: 'Llama 3B · about 3.4 GB download', mark: '05' },
-  { name: 'Crimson Lite', note: 'SmolLM2 360M · smallest', mark: '06' },
-  { name: 'Crimson 1.8 Pro', note: 'Llama 3B · about 3.4 GB download', mark: '07' },
+  { id: 'lite', name: 'Scorpio Lite', note: 'Focused fixes and lightweight builds · 120K context', mark: '01', locked: false },
+  { id: 'flash', name: 'Scorpio Flash', note: 'Fast, efficient task execution · 900K context', mark: '02', locked: false },
+  { id: 'flash-max', name: 'Scorpio Flash Max', note: 'Heavier builds with extended context · 900K context', mark: '03', locked: true },
+  { id: 'orion', name: 'Orion Intelligence', note: 'High-complexity problem solving · 1M context', mark: '04', locked: true },
 ];
 
 const sections: { id: SectionId; label: string; detail: string; icon: LucideIcon }[] = [
@@ -255,7 +252,7 @@ export default function SettingsCenter({
 
           {activeSection === 'ai' && (
             <section className="animate-rise-in">
-              <SectionHeading eyebrow="Intelligence · 02" title="AI configuration" description="Choose a local model preset and instructions. Model names are UI presets; the actual free pretrained weights are listed below." />
+              <SectionHeading eyebrow="Intelligence · 02" title="AI configuration" description="Choose a cloud model and tailor how Orion responds. Larger models are available with an upgraded plan." />
               <div className="mb-6 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[.06] p-4">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles size={17} /></span>
                 <div className="min-w-0 flex-1"><p className="text-xs font-semibold">Current model</p><p className="mt-1 truncate text-sm">{currentModel || 'Select a model'}</p></div>
@@ -263,18 +260,18 @@ export default function SettingsCenter({
               </div>
               <div className="mb-6 grid gap-2 sm:grid-cols-2">
                 {models.map((model) => {
-                  const selected = currentModel === model.name;
+                  const selected = currentModel === model.id || currentModel === model.name;
                   return (
-                    <button key={model.name} onClick={() => { onModelChange(model.name); onNotice(`${model.name} selected`); }} aria-pressed={selected} className={`flex min-h-[82px] items-center gap-3 rounded-2xl border p-4 text-left transition ${selected ? 'border-primary/50 bg-primary/[.07] shadow-[0_4px_18px_hsl(var(--primary)/.08)]' : 'border-border/80 bg-card hover:border-primary/30 hover:bg-muted/50'}`}>
+                    <button key={model.id} onClick={() => { if (model.locked) { onNotice('Upgrade to unlock this model'); return; } onModelChange(model.id); onNotice(`${model.name} selected`); }} aria-pressed={selected} className={`flex min-h-[82px] items-center gap-3 rounded-2xl border p-4 text-left transition ${selected ? 'border-primary/50 bg-primary/[.07] shadow-[0_4px_18px_hsl(var(--primary)/.08)]' : 'border-border/80 bg-card hover:border-primary/30 hover:bg-muted/50'} ${model.locked ? 'opacity-75' : ''}`}>
                       <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl font-mono text-[10px] ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{model.mark}</span>
                       <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{model.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{model.note}</span></span>
-                      {selected && <Check size={15} className="shrink-0 text-primary" />}
+                      {model.locked ? <LockKeyhole size={15} className="shrink-0 text-muted-foreground" /> : selected && <Check size={15} className="shrink-0 text-primary" />}
                     </button>
                   );
                 })}
               </div>
               <div className="mb-5 rounded-xl border border-border bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
-                These presets use public, quantized browser models: Qwen2.5 0.5B, Llama 3.2 1B and 3B, and SmolLM2 360M. The 3B model is roughly 3.4 GB to download and needs several GB of memory. The Crimson and Orion names are local presets, not separate hosted services.
+                Cloudflare Workers AI handles generation for these presets. Scorpio Lite is included with the free plan; larger models show a lock until the account is upgraded.
               </div>
               <Card className="mb-5">
                 <div className="flex items-start gap-3 pt-5"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><Gauge size={16} /></span><div className="flex-1"><div className="flex items-center justify-between gap-3"><label htmlFor="settings-creativity" className="text-sm font-semibold">Response variety</label><span className="font-mono text-xs text-primary">{Number(temperature).toFixed(1)}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">A local preference for response style. Provider support may vary.</p><input id="settings-creativity" type="range" min="0" max="1" step="0.1" value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} className="mt-4 w-full accent-[hsl(var(--primary))]" /><div className="mt-1 flex justify-between font-mono text-[9px] uppercase tracking-wider text-muted-foreground"><span>Focused</span><span>Exploratory</span></div></div></div>
@@ -290,14 +287,14 @@ export default function SettingsCenter({
 
           {activeSection === 'privacy' && (
             <section className="animate-rise-in">
-              <SectionHeading eyebrow="Boundaries · 03" title="Memory & privacy" description="Choose what Orion may keep in this browser. These switches control local preferences only; no server-side retention settings exist here." />
+              <SectionHeading eyebrow="Boundaries · 03" title="Memory & privacy" description="Choose what Orion may keep in this browser. These switches control account preferences; no message retention settings are changed here." />
               <Card className="divide-y divide-border/70">
                 <Toggle checked={rememberContext} onChange={setRememberContext} label="Remember context between chats" description="Allow locally stored conversation context to be used in future sessions on this device." />
                 <Toggle checked={localHistory} onChange={setLocalHistory} label="Keep chat history on this device" description="Save conversation history in this browser's local storage." />
-                <Toggle checked={usageDiagnostics} onChange={setUsageDiagnostics} label="Local usage diagnostics" description="Opt in to a local-only preference flag. No telemetry is transmitted by this control." />
+                <Toggle checked={usageDiagnostics} onChange={setUsageDiagnostics} label="Usage diagnostics" description="Opt in to a local-only preference flag. No telemetry is transmitted by this control." />
               </Card>
               <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/[.045] p-5">
-                <div className="flex items-start gap-3"><HardDrive size={17} className="mt-0.5 shrink-0 text-primary" /><div><h3 className="text-sm font-semibold">Stored on this device</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Settings use browser local storage. Clearing site data in your browser removes them. Privacy controls here do not delete chat records automatically.</p></div></div>
+                <div className="flex items-start gap-3"><HardDrive size={17} className="mt-0.5 shrink-0 text-primary" /><div><h3 className="text-sm font-semibold">Stored with your preferences</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Settings use browser local storage. Clearing site data in your browser removes them. Privacy controls here do not delete chat records automatically.</p></div></div>
               </div>
               <Card className="mt-5"><SettingRow icon={Eye} title="App permissions" detail="Camera, microphone, contacts, and other device permissions are requested only by browser features when used. No external consent has been granted here." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Not granted here</span>} /></Card>
             </section>
@@ -307,7 +304,7 @@ export default function SettingsCenter({
             <section className="animate-rise-in">
               <SectionHeading eyebrow="Connections · 04" title="Integrations & tools" description="External services stay disconnected until Orion has a real provider flow and explicit consent." />
               <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/[.055] p-4">
-                <div className="flex items-start gap-3"><LockKeyhole size={16} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" /><div><p className="text-xs font-semibold">Live provider setup is unavailable</p><p className="mt-1 text-xs leading-5 text-muted-foreground">No credentials, OAuth sessions, or connected external accounts are present. Nothing here will attempt to connect.</p></div></div>
+                <div className="flex items-start gap-3"><LockKeyhole size={16} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" /><div><p className="text-xs font-semibold">Live provider setup is unavailable</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Connect a provider to enable account features and external tools. Nothing connects without your consent.</p></div></div>
               </div>
               <Card className="mb-5 divide-y divide-border/70">
                 <Toggle checked={webSearchEnabled} onChange={onWebSearchChange} label="Allow web search in chat" description="When enabled, Orion can fetch public Wikipedia and current-news results after you turn web search on in the composer. Search requests leave this browser." />

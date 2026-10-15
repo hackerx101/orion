@@ -60,18 +60,18 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       return;
     }
     if (remainingTokens <= 0) {
-      setBuildError('Today’s local model allowance is used. It resets at midnight on this device.');
+      setBuildError('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     const nextPlan = createAppPlan(prompt);
-    nextPlan.steps = ['Planning your app brief', 'Generating the app scaffold', `Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`, 'Checking the preview', 'Build complete'];
+    nextPlan.steps = ['Planning your app brief', 'Generating the app scaffold', `Writing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`, 'Checking the preview', 'Build complete'];
     setPlan(nextPlan);
     setStep(0);
     setPreviewOpen(false);
     setBuildError('');
     setAgentActivity('Reading your app brief');
     setStage('building');
-    onNotice('The selected local model is starting your app build');
+    onNotice('Cloud intelligence is starting your app build');
     const appPrompt = `Create a polished ${appTypes.find((item) => item.id === appType)?.label} as one complete, self-contained HTML file with embedded CSS and JavaScript. The code will be shown to the user and run in a sandboxed browser preview. Use no remote libraries, external requests, external fonts, or backend services. Include useful interaction, accessible labels, responsive styling, and realistic sample data. Return ONLY the complete HTML document with no markdown fences or explanation. User brief: ${prompt.trim()}`;
     setAgentActivity('Planning the first version');
     setStep(1);
@@ -86,10 +86,10 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       const html = output.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
       if (!/^<!doctype html|^<html[\s>]/i.test(html)) {
         if (/could not load a pretrained model/i.test(html)) throw new Error(html);
-        throw new Error('The selected local model did not return a complete HTML app. Try a simpler brief or another model.');
+        throw new Error('The cloud model did not return a complete HTML app. Try a simpler brief or another model.');
       }
       setStep(2);
-      setAgentActivity(`Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
+      setAgentActivity(`Writing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
       const safeHtml = html.replace(/<head([^>]*)>/i, `<head$1><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">`);
       nextPlan.code = safeHtml;
       nextPlan.summary = `A ${appTypes.find((item) => item.id === appType)?.label.toLowerCase()} generated from your brief using ${model}.`;
@@ -105,11 +105,11 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       setAgentActivity('Build complete');
       setStage('complete');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The local app build could not finish.';
+      const message = error instanceof Error ? error.message : 'The cloud app build could not finish.';
       setBuildError(message);
       setAgentActivity('Build stopped');
       setStage('brief');
-      onNotice('The local app build could not finish');
+      onNotice('The cloud app build could not finish');
     }
   };
 
@@ -140,7 +140,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
               My apps
             </div>
             <h1 data-testid="text-create-app-title" className="mt-4 max-w-[520px] text-4xl font-semibold tracking-[-.055em] sm:text-6xl">
-              Turn a thought into a first release.
+              Describe it. Orion builds the first release.
             </h1>
             <p className="mt-5 max-w-[500px] text-[15px] leading-7 text-muted-foreground">
               Tell Orion what you want to make. It will break the idea into a practical first pass, generate the interface, and leave you with a preview to keep shaping.
@@ -206,7 +206,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                     <FolderOpen size={25} />
                   </div>
                   <p className="mt-5 text-sm font-semibold">Your build plan will appear here</p>
-                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">The progress stays visible while Orion turns your prompt into something you can explore.</p>
+                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">The progress stays visible while Orion turns your prompt into something you can explore in a sandboxed preview.</p>
                 </div>
               </div>
             ) : (
@@ -223,7 +223,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                   ))}
                 </div>
 
-                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working locally…'}</div>}
+                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working through the build…'}</div>}
                 {stage === 'complete' && plan && (
                   <div className="mt-6 border-t border-border/70 pt-5">
                     <div className="flex items-start gap-3">
