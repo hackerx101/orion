@@ -6,12 +6,9 @@ import { defineConfig } from 'vite';
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
 const requestedPort = process.env.PORT?.trim();
-const port = requestedPort ? Number(requestedPort) : 3000;
+const parsedPort = requestedPort ? Number(requestedPort) : NaN;
+const port = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535 ? parsedPort : 3000;
 const basePath = process.env.BASE_PATH?.trim() || '/';
-
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error(`Invalid PORT value: ${requestedPort ?? '(empty)'}`);
-}
 
 export default defineConfig({
   base: basePath,
