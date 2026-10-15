@@ -170,130 +170,18 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
 
   return (
     <section className="fixed inset-0 z-[60] overflow-y-auto bg-background animate-rise-in" data-testid="screen-my-apps">
-      <div className="mx-auto min-h-full w-full max-w-[1120px] px-5 pb-16 pt-6 sm:px-10 sm:pt-10">
+      <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-4 pb-44 pt-6 sm:px-8 sm:pt-10">
         <div className="flex items-center justify-between gap-4">
-          <button onClick={onClose} data-testid="button-back-to-chat" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground">
-            <ArrowLeft size={17} />
-            Back to chat
-          </button>
-          <nav aria-label="App Studio" className="flex rounded-xl border border-border bg-muted/50 p-1">
-            <button onClick={() => setStudioTab('chat')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${studioTab === 'chat' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Chat</button>
-            <button onClick={() => { setStudioTab('preview'); if (plan) setPreviewOpen(true); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${studioTab === 'preview' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Preview</button>
-          </nav>
+          <button onClick={onClose} data-testid="button-back-to-chat" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"><ArrowLeft size={17} /> Back to chat</button>
+          <nav aria-label="App Studio" className="flex rounded-xl border border-border bg-muted/50 p-1"><button onClick={() => setStudioTab('chat')} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${studioTab === 'chat' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>Chat</button><button onClick={() => { setStudioTab('preview'); if (plan) setPreviewOpen(true); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${studioTab === 'preview' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>Preview</button></nav>
         </div>
-
-        <div className="mx-auto mt-8 flex w-full max-w-[820px] flex-col gap-5">
-          <div className="hidden">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.16em] text-primary">
-              <Sparkles size={13} />
-              My apps
-            </div>
-            <h1 data-testid="text-create-app-title" className="mt-4 max-w-[520px] text-4xl font-semibold tracking-[-.055em] sm:text-6xl">
-              New app
-            </h1>
-            <p className="mt-5 max-w-[500px] text-[15px] leading-7 text-muted-foreground">
-              Tell Orion what you want to build. Chat here, then open the result in Preview.
-            </p>
-
-            {stage === 'brief' ? (
-              <div className="mt-8 rounded-[26px] border border-border bg-card p-3 shadow-[0_18px_50px_hsl(var(--foreground)/.06)]">
-                <label htmlFor="app-type" className="mb-1 block px-3 pt-2 text-xs font-semibold">App type</label>
-                <select id="app-type" value={appType} onChange={(event) => setAppType(event.target.value as AppType)} data-testid="select-app-type" className="mx-2 mb-2 h-10 w-[calc(100%-16px)] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary">
-                  {appTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
-                </select>
-                <textarea
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  data-testid="input-create-app-prompt"
-                  placeholder="Tell Orion what to build…"
-                  rows={6}
-                  className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 outline-none placeholder:text-muted-foreground/70"
-                />
-                <div className="flex items-center justify-between gap-3 border-t border-border/70 px-2 pt-3">
-                  <span className="font-mono text-[10px] uppercase tracking-[.12em] text-muted-foreground">{Math.round(remainingTokens / 1000)}K estimated tokens left</span>
-                  <button onClick={() => void startBuild()} disabled={!prompt.trim()} data-testid="button-start-app-build" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35">
-                    <Plus size={15} />
-                    Create app
-                  </button>
-                </div>
-                {buildError && <p role="alert" className="px-3 pb-2 pt-3 text-xs leading-5 text-destructive">{buildError}</p>}
-              </div>
-            ) : (
-              <div className="mt-8 rounded-[26px] border border-border bg-card p-5 shadow-[0_18px_50px_hsl(var(--foreground)/.06)]">
-                <div className="flex items-start gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles size={17} /></span>
-                  <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[.12em] text-muted-foreground">Your brief</p>
-                    <p data-testid="text-app-brief" className="mt-2 text-sm leading-6 text-foreground/80">{prompt}</p>
-                  </div>
-                </div>
-                {stage === 'complete' && (
-                  <button onClick={reset} data-testid="button-create-another-app" className="mt-5 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground">
-                    <Plus size={14} />
-                    Create another app
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-[30px] border border-border bg-card p-5 shadow-[0_22px_70px_hsl(var(--foreground)/.08)] sm:p-7">
-            <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Chat</p>
-                <h2 data-testid="text-build-room" className="mt-1 text-xl font-semibold tracking-[-.035em]">{plan?.name ?? 'A new app, waiting for a brief'}</h2>
-              </div>
-              <span className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-[.12em] ${stage === 'complete' ? 'bg-primary/10 text-primary' : stage === 'building' ? 'bg-accent/10 text-accent' : 'bg-muted text-muted-foreground'}`}>
-                {stage === 'complete' ? 'Ready' : stage === 'building' ? 'Building' : 'Waiting'}
-              </span>
-            </div>
-
-            {stage === 'brief' ? (
-              <div className="flex min-h-[360px] flex-col justify-end py-6">
-                <div className="mb-auto flex items-center gap-3 px-2 pt-8"><span className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary"><Brain size={17} /></span><div><p className="text-sm font-semibold">What should I build?</p><p className="mt-1 text-xs text-muted-foreground">Describe it in your own words.</p></div></div>
-                <div className="rounded-2xl border border-border bg-background p-3 shadow-sm">
-                  <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} data-testid="input-create-app-chat" placeholder="Describe the app you want…" rows={4} className="w-full resize-none bg-transparent px-1 text-sm leading-6 outline-none placeholder:text-muted-foreground/70" />
-                  <div className="flex items-center justify-between border-t border-border/70 pt-3"><select value={appType} onChange={(event) => setAppType(event.target.value as AppType)} aria-label="App type" className="rounded-lg bg-muted px-2 py-1.5 text-xs outline-none">{appTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select><button onClick={() => void startBuild()} disabled={!prompt.trim()} data-testid="button-start-app-build" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-35"><ArrowUp size={15} /> Send</button></div>
-                  {buildError && <p role="alert" className="pt-3 text-xs leading-5 text-destructive">{buildError}</p>}
-                </div>
-              </div>
-            ) : (
-              <div className="pt-6">
-                <div className="space-y-4">
-                  {visibleSteps.map(({ label, done, active }, index) => (
-                    <div key={label} data-testid={`row-build-step-${index}`} className={`flex items-center gap-3 rounded-2xl px-3 py-3 transition ${active ? 'bg-primary/5' : ''}`}>
-                      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${done ? 'bg-primary/10 text-primary' : active ? 'bg-accent/10 text-accent' : 'bg-muted text-muted-foreground'}`}>
-                        {done ? <Check size={15} /> : active ? <LoaderCircle size={15} className="animate-spin" /> : <span className="text-[11px] font-semibold">{index + 1}</span>}
-                      </span>
-                      <span className={`text-sm ${active ? 'font-semibold text-foreground' : done ? 'text-foreground/70' : 'text-muted-foreground'}`}>{label}</span>
-                      {done && <CheckCircle2 size={15} className="ml-auto text-primary" />}
-                    </div>
-                  ))}
-                </div>
-
-                {stage === 'building' && <div role="status" className="mt-5 flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs text-primary"><Brain size={15} className="shrink-0" /><span>{agentActivity || 'Working through the build…'}</span></div>}
-                {stage === 'complete' && plan && (
-                  <div className="mt-6 border-t border-border/70 pt-5">
-                    <div className="flex items-start gap-3">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><FileCode2 size={17} /></span>
-                      <div>
-                        <p className="text-sm font-semibold">{plan.summary}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Your first version is ready. Open Preview to try it, then keep improving it in Chat.</p>
-                      </div>
-                    </div>
-                    <div className="mt-5 grid gap-2">
-                      {plan.files.map((file) => <div key={file.name} className="flex items-center gap-3 rounded-xl bg-muted/60 px-3 py-2.5"><Code2 size={14} className="text-muted-foreground" /><span className="min-w-0 flex-1 truncate font-mono text-[10px]">{file.name}</span><span className="hidden text-[10px] text-muted-foreground sm:block">{file.purpose}</span></div>)}
-                    </div>
-                    <button onClick={() => setPreviewOpen(true)} data-testid="button-preview-app" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-foreground py-3 text-xs font-semibold text-background transition hover:-translate-y-0.5">
-                      <MonitorPlay size={15} />
-                      Preview app
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        <div className="mb-7 mt-10 flex items-start justify-between gap-5"><div><div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[.16em] text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-accent" />App Studio</div><h1 data-testid="text-build-room" className="text-2xl font-semibold tracking-[-.045em] sm:text-3xl">{plan?.name ?? 'New app'}</h1><p className="mt-2 text-sm text-muted-foreground">Describe the app you want to make.</p></div><button onClick={reset} className="rounded-xl p-2 text-muted-foreground hover:bg-muted" aria-label="New app"><Plus size={19} /></button></div>
+        <div className="flex-1 space-y-7">
+          {stage === 'brief' && <div className="flex items-center gap-3 animate-rise-in"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-foreground text-background"><Brain size={15} /></div><div><p className="text-xs font-semibold">Orion</p><p className="mt-1 text-[15px] leading-7 text-foreground/85">Tell me what you want to build and I&apos;ll make the first version.</p></div></div>}
+          {stage !== 'brief' && <div className="flex gap-3 animate-rise-in"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-foreground text-background"><Brain size={15} /></div><div className="min-w-0 flex-1"><div className="mb-2 flex items-center gap-2"><span className="text-xs font-semibold">Orion</span><span className="font-mono text-[10px] text-primary">BUILDING</span></div><p className="text-[15px] leading-7 text-foreground/85">{prompt}</p>{stage === 'building' && <div role="status" className="mt-5 flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-xs text-primary"><Brain size={15} /><span>{agentActivity || 'Working through your app…'}</span></div>}{stage === 'complete' && plan && <div className="mt-5 border-t border-border/70 pt-5"><p className="text-sm font-semibold">{plan.summary}</p><div className="mt-4 grid gap-2">{plan.files.map((file) => <div key={file.name} className="flex items-center gap-3 rounded-xl bg-muted/60 px-3 py-2.5"><FileCode2 size={14} className="text-muted-foreground" /><span className="truncate font-mono text-[10px]">{file.name}</span></div>)}</div><button onClick={() => setPreviewOpen(true)} data-testid="button-preview-app" className="mt-5 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"><MonitorPlay size={15} /> Open preview</button></div>}</div></div>}
+          {buildError && <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">{buildError}</p>}
         </div>
+        <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-[61] flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-5 pt-14 sm:pb-7"><div className="pointer-events-auto w-full max-w-[790px]"><div className="composer-glow rounded-[24px] bg-card shadow-[0_12px_32px_hsl(var(--foreground)/.08)]"><div className="rounded-[23px] bg-card p-2"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void startBuild(); } }} data-testid="input-create-app-chat" placeholder="Describe the app you want…" rows={2} className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground/70" /><div className="flex items-center justify-between gap-2 px-1 pb-1 pt-1"><div className="flex items-center gap-1"><button onClick={() => setSourceMenuOpen((open) => !open)} data-testid="button-add-to-app" aria-label="Add to app" className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"><Plus size={19} /></button>{sourceMenuOpen && <div role="menu" className="absolute bottom-16 left-4 z-20 w-56 rounded-2xl border border-border bg-popover p-2 shadow-xl"><button role="menuitem" onClick={() => { setSourceMenuOpen(false); onNotice('Choose a folder to upload.'); }} className="block w-full rounded-xl px-3 py-2 text-left text-xs hover:bg-muted">Upload folder</button><button role="menuitem" onClick={() => { setSourceMenuOpen(false); onNotice('Enter a GitHub repository to import.'); }} className="block w-full rounded-xl px-3 py-2 text-left text-xs hover:bg-muted">Import from GitHub</button><button role="menuitem" onClick={() => { setSourceMenuOpen(false); onNotice('Skills and instructions can be added to this app.'); }} className="block w-full rounded-xl px-3 py-2 text-left text-xs hover:bg-muted">Skills and instruction set</button></div>}<select value={appType} onChange={(event) => setAppType(event.target.value as AppType)} aria-label="App type" className="h-9 rounded-xl bg-muted px-2 text-xs text-muted-foreground outline-none">{appTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select></div><button onClick={() => void startBuild()} disabled={!prompt.trim() || stage === 'building'} data-testid="button-start-app-build" aria-label="Send" className="grid h-10 w-10 place-items-center rounded-full bg-accent text-accent-foreground transition hover:scale-105 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"><ArrowUp size={19} /></button></div></div></div><p className="mt-2 text-center text-[11px] text-muted-foreground/70">Orion may produce incorrect information. Verify accuracy.</p></div></div>
       </div>
 
       {previewOpen && plan && (
