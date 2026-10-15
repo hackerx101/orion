@@ -142,7 +142,7 @@ function App() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [liveListening, setLiveListening] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
-  const [appScreen, setAppScreen] = useState(() => typeof window !== 'undefined' && window.location.pathname === '/apps');
+  const [appScreen, setAppScreen] = useState(() => typeof window !== 'undefined' && window.location.pathname.startsWith('/apps'));
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [chatAction, setChatAction] = useState<'search' | 'media' | 'notifications' | null>(null);
   const [chatSearch, setChatSearch] = useState('');
@@ -181,7 +181,7 @@ function App() {
     return () => window.clearInterval(midnightCheck);
   }, [usedTokens]);
   useEffect(() => {
-    const onPopState = () => setAppScreen(window.location.pathname === '/apps');
+    const onPopState = () => setAppScreen(window.location.pathname.startsWith('/apps'));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -358,9 +358,9 @@ function App() {
       return;
     }
     setGenerating(true);
-    setModelStatus('Preparing cloud intelligence');
+    setModelStatus('Thinking through your request');
     const requestId = ++requestIdRef.current;
-    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use cloud intelligence.');
+    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings.');
     if (webSearch && webSearchAllowed) {
       timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
       return;
@@ -443,7 +443,7 @@ function App() {
       setGenerating(false);
       setGenerationStep(0);
       setModelStatus('');
-      showNotice('The local essay model could not be loaded. Check your connection and try again.');
+      showNotice('That request could not finish. Please try again.');
     });
   };
 
@@ -573,7 +573,7 @@ function App() {
             <div className="mb-3 rounded-xl bg-background/65 p-3">
               <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free daily credit</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
               <div className="mt-2 h-1 rounded-full bg-border"><div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, remainingTokens / FREE_DAILY_TOKEN_LIMIT * 100))}%` }} /></div>
-              <p className="mt-1.5 text-[9px] leading-4 text-muted-foreground">Approximate tokens · resets at midnight locally</p>
+              <p className="mt-1.5 text-[9px] leading-4 text-muted-foreground">Approximate tokens · resets at midnight</p>
             </div>
           )}
           <button onClick={() => setPanel('guest')} data-testid="button-manage-account" className={`flex w-full items-center rounded-xl text-muted-foreground hover:bg-background hover:text-foreground ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}><UserRound size={17} />{expanded && <span className="text-sm">Manage account</span>}</button>
@@ -606,13 +606,12 @@ function App() {
               <span className="hidden sm:block">{dark ? 'Dark' : 'Light'}</span>
             </button>
             <button onClick={() => setPanel('guest')} data-testid="button-user-avatar" className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border-2 border-background bg-foreground text-sm font-semibold text-background shadow-[0_0_0_1px_hsl(var(--border))] hover:scale-[1.03]">
-              {avatarImage ? <img src={avatarImage} alt="Your local profile" className="h-full w-full object-cover" data-testid="img-user-avatar" /> : <UserRound size={17} />}
+              {avatarImage ? <img src={avatarImage} alt="Your profile" className="h-full w-full object-cover" data-testid="img-user-avatar" /> : <UserRound size={17} />}
             </button>
           </div>
         </header>
 
-        {appScreen && <MyApps onClose={closeApps} onNotice={showNotice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={(input, output) => chargeTokens(input, output)} />}
-
+        {appScreen ? <MyApps onClose={closeApps} onNotice={showNotice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={(input, output) => chargeTokens(input, output)} /> : <>
         <section className="scrollbar-subtle flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-4 pb-44 pt-8 sm:px-8 sm:pt-12">
             <div className="mb-7 flex items-start justify-between gap-5">
@@ -653,7 +652,7 @@ function App() {
             {attachment && <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs text-primary"><Paperclip size={13} /><span className="min-w-0 truncate">{attachment.name}</span><span className="hidden text-primary/60 sm:inline">{attachment.detail}</span><button onClick={() => setAttachment(null)} data-testid="button-remove-attachment" className="ml-1 rounded p-0.5 hover:bg-primary/10"><X size={13} /></button></div>}
             <div className="composer-glow rounded-[24px] bg-card shadow-[0_12px_32px_hsl(var(--foreground)/.08)]">
               <div className="rounded-[23px] bg-card p-2">
-                <textarea ref={composerRef} value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} disabled={generating || proLocked} data-testid="input-message-composer" placeholder={proLocked ? 'Orion Intelligence is taking a short local pause…' : 'Ask Orion anything…'} rows={2} className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed" />
+                <textarea ref={composerRef} value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} disabled={generating || proLocked} data-testid="input-message-composer" placeholder={proLocked ? 'Orion Intelligence is unavailable right now…' : 'Ask Orion anything…'} rows={2} className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed" />
                 <div className="flex items-center justify-between gap-2 px-1 pb-1 pt-1">
                   <div className="flex items-center gap-1">
                     <button onClick={() => { setSheetTab('add'); setPanel('sheet'); }} data-testid="button-add-to-chat" className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Add to chat"><Plus size={19} /></button>
@@ -671,9 +670,10 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Cloud AI · usage is metered daily · verify important facts</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center text-[11px] text-muted-foreground/70">Orion may produce incorrect information. Verify accuracy.</p>
           </div>
         </div>
+        </>}
       </main>
 
        {settingsOpen && <SettingsCenter onClose={() => setSettingsOpen(false)} currentModel={selectedModel.name} onModelChange={(name) => { const match = (Object.keys(modelDetails) as ModelId[]).find((id) => modelDetails[id].name === name); if (match) setModel(match); }} onNotice={showNotice} apiDomainAvailable={false} tokensRemaining={remainingTokens} tokenLimit={FREE_DAILY_TOKEN_LIMIT} webSearchEnabled={webSearchAllowed} onWebSearchChange={setWebSearchAllowed} />}
@@ -754,7 +754,7 @@ function ModelMenu({ current, proUses, onSelect }: { current: ModelId; proUses: 
 }
 
 function GuestPanel({ onClose, onSettings }: { onClose: () => void; onSettings: () => void }) {
-  return <SidePanel onClose={onClose} title="Your local profile"><div className="flex flex-col items-center px-4 pb-7 pt-4 text-center"><div className="grid h-20 w-20 place-items-center rounded-full border-4 border-background bg-foreground text-background shadow-[0_0_0_1px_hsl(var(--border))]"><UserRound size={30} /></div><h2 className="mt-5 text-xl font-semibold tracking-[-.03em]">You’re visiting as a guest</h2><p className="mt-2 max-w-[280px] text-sm leading-6 text-muted-foreground">Your chats and settings stay in this browser. A real sign-in service is not connected yet.</p><button onClick={onSettings} data-testid="button-settings-from-guest" className="mt-6 flex h-11 w-full max-w-[280px] items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background transition hover:opacity-90"><Settings size={16} />Open settings</button><div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground"><ShieldCheck size={14} className="text-primary" />Local profile · no account credentials</div></div></SidePanel>;
+  return <SidePanel onClose={onClose} title="Your profile"><div className="flex flex-col items-center px-4 pb-7 pt-4 text-center"><div className="grid h-20 w-20 place-items-center rounded-full border-4 border-background bg-foreground text-background shadow-[0_0_0_1px_hsl(var(--border))]"><UserRound size={30} /></div><h2 className="mt-5 text-xl font-semibold tracking-[-.03em]">You’re visiting as a guest</h2><p className="mt-2 max-w-[280px] text-sm leading-6 text-muted-foreground">Your chats and settings stay in this browser. A real sign-in service is not connected yet.</p><button onClick={onSettings} data-testid="button-settings-from-guest" className="mt-6 flex h-11 w-full max-w-[280px] items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background transition hover:opacity-90"><Settings size={16} />Open settings</button><div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground"><ShieldCheck size={14} className="text-primary" />Local profile · no account credentials</div></div></SidePanel>;
 }
 
 function LoginPanel({ mode, setMode, email, setEmail, onClose, onSubmit }: { mode: 'login' | 'signup'; setMode: (mode: 'login' | 'signup') => void; email: string; setEmail: (value: string) => void; onClose: () => void; onSubmit: () => void }) {
