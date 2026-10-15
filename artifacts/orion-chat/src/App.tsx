@@ -360,7 +360,7 @@ function App() {
     setGenerating(true);
     setModelStatus('Thinking through your request');
     const requestId = ++requestIdRef.current;
-    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use cloud intelligence.');
+    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings.');
     if (webSearch && webSearchAllowed) {
       timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
       return;

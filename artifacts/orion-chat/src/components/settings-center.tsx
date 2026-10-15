@@ -53,7 +53,7 @@ const sections: { id: SectionId; label: string; detail: string; icon: LucideIcon
   { id: 'general', label: 'Preferences', detail: 'Interface & access', icon: Monitor },
 ];
 
-function readLocal<T,>(key: string, fallback: T): T {
+function readSetting<T,>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     const value = window.localStorage.getItem(key);
@@ -143,21 +143,21 @@ export default function SettingsCenter({
   onWebSearchChange,
 }: SettingsCenterProps) {
   const [activeSection, setActiveSection] = useState<SectionId>('account');
-  const [displayName, setDisplayName] = useState(() => readLocal('orion-settings-profile-name', ''));
-  const [savedName, setSavedName] = useState(() => readLocal('orion-settings-profile-name', ''));
-  const [rememberContext, setRememberContext] = useState(() => readLocal('orion-settings-memory', true));
-  const [localHistory, setLocalHistory] = useState(() => readLocal('orion-settings-history', true));
-  const [usageDiagnostics, setUsageDiagnostics] = useState(() => readLocal('orion-settings-diagnostics', false));
-  const [reducedMotion, setReducedMotion] = useState(() => readLocal('orion-settings-reduced-motion', false));
-  const [soundEffects, setSoundEffects] = useState(() => readLocal('orion-settings-sound', false));
-  const [largerText, setLargerText] = useState(() => readLocal('orion-settings-large-text', false));
-  const [compactLayout, setCompactLayout] = useState(() => readLocal('orion-settings-compact', false));
-  const [temperature, setTemperature] = useState(() => readLocal('orion-settings-creativity', 0.6));
-  const [basePrompt, setBasePrompt] = useState(() => readLocal('orion-settings-prompt', ''));
+  const [displayName, setDisplayName] = useState(() => readSetting('orion-settings-profile-name', ''));
+  const [savedName, setSavedName] = useState(() => readSetting('orion-settings-profile-name', ''));
+  const [rememberContext, setRememberContext] = useState(() => readSetting('orion-settings-memory', true));
+  const [historyEnabled, setHistoryEnabled] = useState(() => readSetting('orion-settings-history', true));
+  const [usageDiagnostics, setUsageDiagnostics] = useState(() => readSetting('orion-settings-diagnostics', false));
+  const [reducedMotion, setReducedMotion] = useState(() => readSetting('orion-settings-reduced-motion', false));
+  const [soundEffects, setSoundEffects] = useState(() => readSetting('orion-settings-sound', false));
+  const [largerText, setLargerText] = useState(() => readSetting('orion-settings-large-text', false));
+  const [compactLayout, setCompactLayout] = useState(() => readSetting('orion-settings-compact', false));
+  const [temperature, setTemperature] = useState(() => readSetting('orion-settings-creativity', 0.6));
+  const [basePrompt, setBasePrompt] = useState(() => readSetting('orion-settings-prompt', ''));
   const [savedMessage, setSavedMessage] = useState('');
 
   useEffect(() => { window.localStorage.setItem('orion-settings-memory', JSON.stringify(rememberContext)); }, [rememberContext]);
-  useEffect(() => { window.localStorage.setItem('orion-settings-history', JSON.stringify(localHistory)); }, [localHistory]);
+  useEffect(() => { window.localStorage.setItem('orion-settings-history', JSON.stringify(historyEnabled)); }, [historyEnabled]);
   useEffect(() => { window.localStorage.setItem('orion-settings-diagnostics', JSON.stringify(usageDiagnostics)); }, [usageDiagnostics]);
   useEffect(() => { window.localStorage.setItem('orion-settings-reduced-motion', JSON.stringify(reducedMotion)); }, [reducedMotion]);
   useEffect(() => { window.localStorage.setItem('orion-settings-sound', JSON.stringify(soundEffects)); }, [soundEffects]);
@@ -171,8 +171,8 @@ export default function SettingsCenter({
     setDisplayName(value);
     setSavedName(value);
     window.localStorage.setItem('orion-settings-profile-name', JSON.stringify(value));
-    setSavedMessage('Saved on this device');
-    onNotice('Profile preference saved locally');
+    setSavedMessage('Saved');
+    onNotice('Profile preference saved');
     window.setTimeout(() => setSavedMessage(''), 2200);
   };
 
@@ -188,7 +188,7 @@ export default function SettingsCenter({
           <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-foreground text-background">
             <span className="relative h-3.5 w-3.5 rounded-full border border-current"><span className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-current" /></span>
           </span>
-          <div className="leading-tight"><p className="text-sm font-semibold tracking-[-.02em]">Orion <span className="text-primary">Chat</span></p><p className="mt-1 font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground">Settings workspace</p></div>
+          <div className="leading-tight"><p className="text-sm font-semibold tracking-[-.02em]">Orion <span className="text-primary">Chat</span></p><p className="mt-1 font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground">Settings</p></div>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-border/80 bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Private by default
@@ -220,31 +220,31 @@ export default function SettingsCenter({
         <main className="min-w-0 px-4 pb-12 pt-7 sm:px-8 sm:pt-10 lg:px-14">
           <div className="mb-7 flex items-center justify-between gap-4 border-b border-border/70 pb-4">
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground"><span>Settings</span><ChevronRight size={12} /><span className="text-foreground">{active.label}</span></div>
-            <span className="hidden font-mono text-[9px] uppercase tracking-[.14em] text-muted-foreground sm:block">Saved locally · On this device</span>
+            <span className="hidden font-mono text-[9px] uppercase tracking-[.14em] text-muted-foreground sm:block">Saved automatically</span>
           </div>
 
           {activeSection === 'account' && (
             <section className="animate-rise-in">
-              <SectionHeading eyebrow="Identity · 01" title="Account center" description="A local profile for a local-first workspace. No account service is connected here." />
+              <SectionHeading eyebrow="Identity · 01" title="Account center" description="Manage your name and plan preferences." />
               <Card className="mb-5">
                 <div className="flex flex-col gap-5 py-5 sm:flex-row sm:items-center">
                   <div className="grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[20px] bg-primary/10 text-primary"><UserRound size={24} /></div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">Your local profile</p>
+                    <p className="text-sm font-semibold">Your profile</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">This name is only a label on this device. Orion does not verify an identity.</p>
-                    <label htmlFor="settings-profile-name" className="sr-only">Local profile name</label>
+                    <label htmlFor="settings-profile-name" className="sr-only">Profile name</label>
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <input id="settings-profile-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={48} placeholder="Choose a display name" className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
-                      <button onClick={saveName} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-xs font-semibold text-background transition hover:opacity-85"><Check size={14} />Save locally</button>
+                      <button onClick={saveName} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-xs font-semibold text-background transition hover:opacity-85"><Check size={14} />Save</button>
                     </div>
                     <p aria-live="polite" className="mt-2 min-h-4 text-[10px] text-primary">{savedMessage || (savedName ? `Saved name: ${savedName}` : '')}</p>
                   </div>
                 </div>
               </Card>
               <Card className="divide-y divide-border/70">
-                <SettingRow icon={WalletCards} title="Daily local allowance" detail={`${tokensRemaining.toLocaleString()} of ${tokenLimit.toLocaleString()} estimated tokens remain. Resets at midnight in this browser; this is not a paid plan or provider billing meter.`} trailing={<span className="rounded-full bg-primary/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-primary">Local</span>} />
+                <SettingRow icon={WalletCards} title="Daily limit" detail={`${tokensRemaining.toFreeeString()} of ${tokenLimit.toFreeeString()} estimated tokens remain. Resets at midnight in this browser; this is not a paid plan or provider billing meter.`} trailing={<span className="rounded-full bg-primary/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-primary">Free</span>} />
                 <SettingRow icon={WalletCards} title="Plan & billing" detail="Billing details are unavailable until a real account service is connected." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Not connected</span>} />
-                <SettingRow icon={KeyRound} title="Sign-in & security" detail="No sign-in provider or account credentials are configured in this workspace." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Local only</span>} />
+                <SettingRow icon={KeyRound} title="Sign-in & security" detail="No sign-in provider or account credentials are configured in this workspace." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Free only</span>} />
               </Card>
               <div className="mt-5 flex items-start gap-3 rounded-xl border border-border/70 bg-muted/45 p-4 text-xs leading-5 text-muted-foreground"><CircleHelp size={15} className="mt-0.5 shrink-0 text-primary" /><p>Profile and plan controls are placeholders. No login, billing, or identity state is being implied.</p></div>
             </section>
@@ -271,10 +271,10 @@ export default function SettingsCenter({
                 })}
               </div>
               <div className="mb-5 rounded-xl border border-border bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
-                Cloudflare Workers AI handles generation for these presets. Scorpio Lite is included with the free plan; larger models show a lock until the account is upgraded.
+                Scorpio Lite is included with the free plan. Larger models need an upgrade.
               </div>
               <Card className="mb-5">
-                <div className="flex items-start gap-3 pt-5"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><Gauge size={16} /></span><div className="flex-1"><div className="flex items-center justify-between gap-3"><label htmlFor="settings-creativity" className="text-sm font-semibold">Response variety</label><span className="font-mono text-xs text-primary">{Number(temperature).toFixed(1)}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">A local preference for response style. Provider support may vary.</p><input id="settings-creativity" type="range" min="0" max="1" step="0.1" value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} className="mt-4 w-full accent-[hsl(var(--primary))]" /><div className="mt-1 flex justify-between font-mono text-[9px] uppercase tracking-wider text-muted-foreground"><span>Focused</span><span>Exploratory</span></div></div></div>
+                <div className="flex items-start gap-3 pt-5"><span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-muted-foreground"><Gauge size={16} /></span><div className="flex-1"><div className="flex items-center justify-between gap-3"><label htmlFor="settings-creativity" className="text-sm font-semibold">Response variety</label><span className="font-mono text-xs text-primary">{Number(temperature).toFixed(1)}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">Choose how focused or varied replies should feel. Provider support may vary.</p><input id="settings-creativity" type="range" min="0" max="1" step="0.1" value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} className="mt-4 w-full accent-[hsl(var(--primary))]" /><div className="mt-1 flex justify-between font-mono text-[9px] uppercase tracking-wider text-muted-foreground"><span>Focused</span><span>Exploratory</span></div></div></div>
               </Card>
               <Card className="mb-5 py-5">
                 <label htmlFor="settings-system-prompt" className="block text-sm font-semibold">Additional assistant instructions</label>
@@ -290,7 +290,7 @@ export default function SettingsCenter({
               <SectionHeading eyebrow="Boundaries · 03" title="Memory & privacy" description="Choose what Orion may keep in this browser. These switches control account preferences; no message retention settings are changed here." />
               <Card className="divide-y divide-border/70">
                 <Toggle checked={rememberContext} onChange={setRememberContext} label="Remember context between chats" description="Allow locally stored conversation context to be used in future sessions on this device." />
-                <Toggle checked={localHistory} onChange={setLocalHistory} label="Keep chat history on this device" description="Save conversation history in this browser's local storage." />
+                <Toggle checked={historyEnabled} onChange={setHistoryEnabled} label="Keep chat history on this device" description="Save conversation history in this browser's local storage." />
                 <Toggle checked={usageDiagnostics} onChange={setUsageDiagnostics} label="Usage diagnostics" description="Opt in to a local-only preference flag. No telemetry is transmitted by this control." />
               </Card>
               <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/[.045] p-5">
@@ -352,7 +352,7 @@ export default function SettingsCenter({
           )}
 
           <footer className="mt-12 flex flex-col gap-2 border-t border-border/70 pt-5 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <span>Orion Chat · Local-first by design</span>
+            <span>Orion Chat · Free-first by design</span>
             <span className="inline-flex items-center gap-1.5 font-mono uppercase tracking-wider"><LockKeyhole size={11} /> No secrets collected here</span>
           </footer>
         </main>

@@ -80,7 +80,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
     try {
       const output = await generateLocalResponse(appPrompt, {
         model,
-        systemPrompt: `${ORION_SYSTEM_PROMPT}\n${systemPrompt}\nYou are a careful app-building agent. Follow the requested app brief. Return valid, complete HTML and nothing else. Do not claim to edit source files; the app is generated as a single local preview.`,
+        systemPrompt: `${ORION_SYSTEM_PROMPT}\n${systemPrompt}\nYou are a careful app-building agent. Follow the requested app brief. Return valid, complete HTML and nothing else. Do not claim to edit source files; the app is generated as a single app preview.`,
         maxNewTokens: 1800,
         temperature: 0.45,
         onProgress: (message: string) => setAgentActivity(message),
@@ -88,7 +88,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       const html = output.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
       if (!/^<!doctype html|^<html[\s>]/i.test(html)) {
         if (/could not load a pretrained model/i.test(html)) throw new Error(html);
-        throw new Error('The cloud model did not return a complete HTML app. Try a simpler brief or another model.');
+        throw new Error('I could not make that app yet. Try adding a little more detail.');
       }
       setStep(2);
       setAgentActivity(`Writing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
@@ -96,9 +96,9 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       nextPlan.code = safeHtml;
       nextPlan.summary = `A ${appTypes.find((item) => item.id === appType)?.label.toLowerCase()} generated from your brief using ${model}.`;
       nextPlan.files = [
-        { name: `${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'orion-app'}/index.html`, purpose: 'Editable app markup, styling, and local interactions' },
+        { name: `${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'orion-app'}/index.html`, purpose: 'Editable app markup, styling, and interactions' },
       ];
-      nextPlan.steps = [...nextPlan.steps.slice(0, 3), 'Checking the sandboxed preview', 'Build complete'];
+      nextPlan.steps = [...nextPlan.steps.slice(0, 3), 'Checking the preview', 'Build complete'];
       onConsumeTokens(appPrompt, output);
       setStep(3);
       setAgentActivity('Checking the preview');
@@ -107,11 +107,11 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       setAgentActivity('Build complete');
       setStage('complete');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The cloud app build could not finish.';
+      const message = error instanceof Error ? error.message : 'I could not finish that app. Please try again.';
       setBuildError(message);
       setAgentActivity('Build stopped');
       setStage('brief');
-      onNotice('The cloud app build could not finish');
+      onNotice('I could not finish that app. Please try again.');
     }
   };
 
@@ -138,17 +138,17 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
           </nav>
         </div>
 
-        <div className="mt-12 grid gap-10 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
-          <div>
+        <div className="mx-auto mt-8 flex w-full max-w-[820px] flex-col gap-5">
+          <div className="w-full">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.16em] text-primary">
               <Sparkles size={13} />
               My apps
             </div>
             <h1 data-testid="text-create-app-title" className="mt-4 max-w-[520px] text-4xl font-semibold tracking-[-.055em] sm:text-6xl">
-              Describe it. Orion builds the first release.
+              New app
             </h1>
             <p className="mt-5 max-w-[500px] text-[15px] leading-7 text-muted-foreground">
-              Tell Orion what you want to make. It will break the idea into a practical first pass, generate the interface, and leave you with a preview to keep shaping.
+              Tell Orion what you want to build. Chat here, then open the result in Preview.
             </p>
 
             {stage === 'brief' ? (
@@ -161,7 +161,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
                   data-testid="input-create-app-prompt"
-                  placeholder="Build a simple habit tracker for people who want a gentler morning…"
+                  placeholder="Tell Orion what to build…"
                   rows={6}
                   className="w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 outline-none placeholder:text-muted-foreground/70"
                 />
@@ -196,7 +196,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
           <div className="rounded-[30px] border border-border bg-card p-5 shadow-[0_22px_70px_hsl(var(--foreground)/.08)] sm:p-7">
             <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Build room</p>
+                <p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Chat</p>
                 <h2 data-testid="text-build-room" className="mt-1 text-xl font-semibold tracking-[-.035em]">{plan?.name ?? 'A new app, waiting for a brief'}</h2>
               </div>
               <span className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-[.12em] ${stage === 'complete' ? 'bg-primary/10 text-primary' : stage === 'building' ? 'bg-accent/10 text-accent' : 'bg-muted text-muted-foreground'}`}>
@@ -210,8 +210,8 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                   <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-dashed border-primary/35 bg-primary/5 text-primary">
                     <FolderOpen size={25} />
                   </div>
-                  <p className="mt-5 text-sm font-semibold">Your build plan will appear here</p>
-                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">You will see each step while Orion turns your words into a working app.</p>
+                  <p className="mt-5 text-sm font-semibold">Start a new chat</p>
+                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">Describe the app in the message box below. I will show each step as it is made.</p>
                 </div>
               </div>
             ) : (
