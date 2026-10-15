@@ -52,7 +52,7 @@ import { orionResponse, type BrainAttachment } from '@/lib/orion-brain';
 import { generateLocalResponse, generateLocalResponseSync, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js';
 import { searchWeb, type WebCandidate, type WebSearchResult, type WebSource } from '@/lib/web-search';
 
-type ModelId = 'flash' | 'sting' | 'orion' | 'orion-pro' | 'crimson-crush' | 'crimson-lite' | 'crimson-pro';
+type ModelId = 'lite' | 'flash' | 'flash-max' | 'orion';
 type Panel = 'none' | 'guest' | 'login' | 'account' | 'sheet';
 type Role = 'user' | 'assistant';
 type Message = {
@@ -72,17 +72,14 @@ type Chat = { id: string; title: string; preview: string; time: string };
 const nowTime = () =>
   new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date());
 
-const modelDetails: Record<ModelId, { name: string; label: string; description: string; color: string }> = {
-  flash: { name: 'Scorpio Flash 1.0', label: 'Fast local model', description: 'Small Qwen instruction model for quick everyday replies.', color: 'cyan' },
-  sting: { name: 'Scorpio Sting', label: 'Balanced local model', description: 'Uses a larger free local model; replies take at least 20 seconds.', color: 'violet' },
-  orion: { name: 'Orion Intelligence', label: 'Local assistant', description: 'A local model preset for more considered answers.', color: 'rose' },
-  'orion-pro': { name: 'Orion Pro', label: 'Large local model', description: 'Uses a 3B-parameter free model; first download is about 3.4 GB and needs several GB of memory.', color: 'rose' },
-  'crimson-crush': { name: 'Crimson Crush 1.5', label: 'Large local model', description: 'Creative preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'violet' },
-  'crimson-lite': { name: 'Crimson Lite', label: 'Light local model', description: 'Small SmolLM instruction model for a lighter footprint.', color: 'cyan' },
-  'crimson-pro': { name: 'Crimson 1.8 Pro', label: 'Large local model', description: 'Extended preset using the 3B-parameter free model; first download is about 3.4 GB.', color: 'rose' },
+const modelDetails: Record<ModelId, { name: string; label: string; description: string; color: string; context: string; locked?: boolean }> = {
+  lite: { name: 'Scorpio Lite', label: 'Focused builder', description: 'Fixes focused code lines and creates small features.', color: 'cyan', context: '120K context' },
+  flash: { name: 'Scorpio Flash', label: 'Fast, efficient task execution', description: 'Fast, efficient task execution.', color: 'violet', context: '900K context' },
+  'flash-max': { name: 'Scorpio Flash Max', label: 'Extended build reasoning', description: 'Handles heavier builds with a wider working context.', color: 'violet', context: '900K context', locked: true },
+  orion: { name: 'Orion Intelligence', label: 'Complex problem solving', description: 'Designed for high-complexity tasks and large projects.', color: 'rose', context: '1M context', locked: true },
 };
 
-const FREE_DAILY_TOKEN_LIMIT = 120_000;
+const FREE_DAILY_TOKEN_LIMIT = 5_000_000;
 const localDayKey = () => new Date().toLocaleDateString('en-CA');
 const readDailyUsage = () => {
   const saved = readStore<{ day: string; used: number }>('orion-local-usage', { day: localDayKey(), used: 0 });
@@ -190,7 +187,7 @@ function App() {
   }, []);
 
   const selectedModel = modelDetails[model];
-  const proLocked = false;
+  const proLocked = Boolean(selectedModel.locked) && !loggedIn;
   const remainingTokens = Math.max(0, FREE_DAILY_TOKEN_LIMIT - usedTokens);
 
   const openApps = () => {
@@ -334,7 +331,7 @@ function App() {
     const prompt = (override ?? composer).trim();
     if ((!prompt && !attachment) || generating || proLocked) return;
     if (remainingTokens <= 0 && !(webSearch && webSearchAllowed)) {
-      showNotice('Today’s free local model allowance is used. It resets at midnight on this device.');
+      showNotice('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     if (/(essay|paragraph|article|write about)/i.test(prompt) && !override) {
@@ -361,15 +358,15 @@ function App() {
       return;
     }
     setGenerating(true);
-    setModelStatus('Waiting for local model');
+    setModelStatus('Preparing cloud intelligence');
     const requestId = ++requestIdRef.current;
-    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use the local model.');
+    if (webSearch && !webSearchAllowed) showNotice('Web search is disabled in Settings. This reply will use cloud intelligence.');
     if (webSearch && webSearchAllowed) {
       timerRef.current = window.setTimeout(() => runWebSearch(question), 250);
       return;
     }
-    if (model === 'orion' || model === 'orion-pro' || model === 'crimson-pro') setProUses((count) => count + 1);
-    const delay = model === 'flash' || model === 'crimson-lite' ? 250 : model === 'sting' ? 0 : 900;
+    if (model === 'orion' || model === 'flash-max') setProUses((count) => count + 1);
+    const delay = model === 'lite' ? 250 : model === 'flash' ? 0 : 900;
     timerRef.current = window.setTimeout(() => {
       const startedAt = Date.now();
       void generateLocalResponse(question, {
@@ -664,7 +661,7 @@ function App() {
                     <button onClick={() => setVoiceOpen(true)} data-testid="button-live-voice" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><Mic size={16} /><span className="hidden text-xs font-medium sm:inline">Live voice</span></button>
                     <span className="hidden h-4 w-px bg-border sm:block" />
                     <div className="relative">
-                      <button onClick={() => setModelOpen((value) => !value)} data-testid="button-model-selector" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><span className={`grid h-5 w-5 place-items-center rounded-full ${model === 'flash' ? 'bg-primary/15 text-primary' : model === 'sting' ? 'bg-violet-500/15 text-violet-500' : 'bg-accent/15 text-accent'}`}><Sparkles size={12} /></span><span className="hidden text-xs font-medium sm:inline">{selectedModel.name.replace('Scorpio ', '')}</span><ChevronDown size={13} /></button>
+                      <button onClick={() => setModelOpen((value) => !value)} data-testid="button-model-selector" className="flex h-9 items-center gap-2 rounded-xl px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"><span className={`grid h-5 w-5 place-items-center rounded-full ${model === 'lite' ? 'bg-primary/15 text-primary' : model === 'flash' || model === 'flash-max' ? 'bg-violet-500/15 text-violet-500' : 'bg-accent/15 text-accent'}`}><Sparkles size={12} /></span><span className="hidden text-xs font-medium sm:inline">{selectedModel.name.replace('Scorpio ', '')}</span><ChevronDown size={13} /></button>
                       {modelOpen && <ModelMenu current={model} proUses={proUses} onSelect={(value) => { setModel(value); setModelOpen(false); }} />}
                     </div>
                   </div>
@@ -675,7 +672,7 @@ function App() {
                 </div>
               </div>
             </div>
-             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Local model downloads once · prompts stay in this browser · verify important facts</p>
+             <p data-testid="text-local-disclaimer" className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.1em] text-muted-foreground/70">Cloud AI · usage is metered daily · verify important facts</p>
           </div>
         </div>
       </main>
@@ -748,10 +745,10 @@ function SuggestedPrompts({ onSelect }: { onSelect: (value: string) => void }) {
 function ModelMenu({ current, proUses, onSelect }: { current: ModelId; proUses: number; onSelect: (model: ModelId) => void }) {
   return (
     <div data-testid="menu-models" className="absolute bottom-12 left-0 z-30 w-[290px] rounded-2xl border border-border bg-popover p-2 shadow-[0_18px_50px_hsl(var(--foreground)/.15)]">
-      <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose your thinking pace</p></div>
+      <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose a model</p><p className="mt-1 text-[10px] text-muted-foreground">Free access includes Scorpio Lite</p></div>
       {(Object.keys(modelDetails) as ModelId[]).map((id) => {
         const detail = modelDetails[id];
-        return <button key={id} onClick={() => onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
+        return <button key={id} onClick={() => detail.locked && !readStore('orion-logged-in', false) ? undefined : onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
       })}
     </div>
   );
@@ -916,7 +913,7 @@ function VoiceScreen({ selected, setSelected, model, systemPrompt, remainingToke
     const question = spoken.trim();
     if (!question || busyRef.current) return;
     if (remainingTokensRef.current <= 0) {
-      setCaption('Today’s free local model allowance is used. It resets at midnight on this device.');
+      setCaption('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     busyRef.current = true;

@@ -60,7 +60,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       return;
     }
     if (remainingTokens <= 0) {
-      setBuildError('Today’s local model allowance is used. It resets at midnight on this device.');
+      setBuildError('You’ve reached today’s free usage limit. Try again at 12:00 AM or upgrade for more access.');
       return;
     }
     const nextPlan = createAppPlan(prompt);
@@ -71,7 +71,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
     setBuildError('');
     setAgentActivity('Reading your app brief');
     setStage('building');
-    onNotice('The selected local model is starting your app build');
+    onNotice('Cloud intelligence is starting your app build');
     const appPrompt = `Create a polished ${appTypes.find((item) => item.id === appType)?.label} as one complete, self-contained HTML file with embedded CSS and JavaScript. The code will be shown to the user and run in a sandboxed browser preview. Use no remote libraries, external requests, external fonts, or backend services. Include useful interaction, accessible labels, responsive styling, and realistic sample data. Return ONLY the complete HTML document with no markdown fences or explanation. User brief: ${prompt.trim()}`;
     setAgentActivity('Planning the first version');
     setStep(1);
@@ -105,7 +105,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       setAgentActivity('Build complete');
       setStage('complete');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The local app build could not finish.';
+      const message = error instanceof Error ? error.message : 'The cloud app build could not finish.';
       setBuildError(message);
       setAgentActivity('Build stopped');
       setStage('brief');
@@ -223,7 +223,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                   ))}
                 </div>
 
-                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working locally…'}</div>}
+                {stage === 'building' && <div role="status" className="mt-5 rounded-xl bg-primary/5 px-3 py-2 font-mono text-[10px] text-primary">{agentActivity || 'Working through the build…'}</div>}
                 {stage === 'complete' && plan && (
                   <div className="mt-6 border-t border-border/70 pt-5">
                     <div className="flex items-start gap-3">
