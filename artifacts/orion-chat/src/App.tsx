@@ -611,8 +611,7 @@ function App() {
           </div>
         </header>
 
-        {appScreen && <MyApps onClose={closeApps} onNotice={showNotice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={(input, output) => chargeTokens(input, output)} />}
-
+        {appScreen ? <MyApps onClose={closeApps} onNotice={showNotice} model={model} systemPrompt={readAssistantPrompt()} remainingTokens={remainingTokens} onConsumeTokens={(input, output) => chargeTokens(input, output)} /> : <>
         <section className="scrollbar-subtle flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-4 pb-44 pt-8 sm:px-8 sm:pt-12">
             <div className="mb-7 flex items-start justify-between gap-5">
@@ -674,6 +673,7 @@ function App() {
              <p data-testid="text-local-disclaimer" className="mt-2 text-center text-[11px] text-muted-foreground/70">Orion may produce incorrect information. Verify accuracy.</p>
           </div>
         </div>
+        </>}
       </main>
 
        {settingsOpen && <SettingsCenter onClose={() => setSettingsOpen(false)} currentModel={selectedModel.name} onModelChange={(name) => { const match = (Object.keys(modelDetails) as ModelId[]).find((id) => modelDetails[id].name === name); if (match) setModel(match); }} onNotice={showNotice} apiDomainAvailable={false} tokensRemaining={remainingTokens} tokenLimit={FREE_DAILY_TOKEN_LIMIT} webSearchEnabled={webSearchAllowed} onWebSearchChange={setWebSearchAllowed} />}
