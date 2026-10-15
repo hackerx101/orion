@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const port = Number(process.env.PORT || 5173);
+const port = Number(process.env.PORT ?? 5173);
 const basePath = process.env.BASE_PATH || '/';
 
 export default defineConfig({
@@ -47,7 +47,7 @@ export default defineConfig({
   },
   server: {
     port,
-    strictPort: true,
+    strictPort: false,
     host: '0.0.0.0',
     allowedHosts: true,
     fs: {

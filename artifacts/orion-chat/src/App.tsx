@@ -377,8 +377,7 @@ function App() {
         temperature: readStore('orion-settings-creativity', 0.6),
         onProgress: (message: string) => setModelStatus(message),
       }).then((answer) => {
-        const waitForSting = model === 'sting' ? Math.max(0, 20000 - (Date.now() - startedAt)) : 0;
-        window.setTimeout(() => finishResponse(question, attached ?? undefined, answer, requestId), waitForSting);
+        window.setTimeout(() => finishResponse(question, attached ?? undefined, answer, requestId), Math.max(0, 20000 - (Date.now() - startedAt)));
       }).catch(() => {
         const fallback = generateLocalResponseSync(question, {
           model,
@@ -748,7 +747,7 @@ function ModelMenu({ current, proUses, onSelect }: { current: ModelId; proUses: 
       <div className="px-3 pb-2 pt-1"><p className="font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">Choose a model</p><p className="mt-1 text-[10px] text-muted-foreground">Free access includes Scorpio Lite</p></div>
       {(Object.keys(modelDetails) as ModelId[]).map((id) => {
         const detail = modelDetails[id];
-        return <button key={id} onClick={() => detail.locked && !readStore('orion-logged-in', false) ? undefined : onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' || id === 'crimson-lite' ? 'bg-primary/12 text-primary' : id === 'sting' || id === 'crimson-crush' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
+        return <button key={id} onClick={() => detail.locked && !readStore('orion-logged-in', false) ? undefined : onSelect(id)} data-testid={`button-select-model-${id}`} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition hover:bg-muted ${current === id ? 'bg-muted' : ''}`}><span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${id === 'flash' ? 'bg-primary/12 text-primary' : id === 'flash-max' ? 'bg-violet-500/12 text-violet-500' : 'bg-accent/12 text-accent'}`}><Sparkles size={14} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-xs font-semibold">{detail.name}{current === id && <Check size={14} className="text-primary" />}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail.description}</span></span></button>;
       })}
     </div>
   );
