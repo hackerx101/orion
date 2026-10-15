@@ -242,7 +242,7 @@ export default function SettingsCenter({
                 </div>
               </Card>
               <Card className="divide-y divide-border/70">
-                <SettingRow icon={WalletCards} title="Daily limit" detail={`${tokensRemaining.toFreeeString()} of ${tokenLimit.toFreeeString()} estimated tokens remain. Resets at midnight in this browser; this is not a paid plan or provider billing meter.`} trailing={<span className="rounded-full bg-primary/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-primary">Free</span>} />
+                <SettingRow icon={WalletCards} title="Daily limit" detail={`${tokensRemaining.toLocaleString()} of ${tokenLimit.toLocaleString()} estimated tokens remain. Resets at midnight in this browser; this is not a paid plan or provider billing meter.`} trailing={<span className="rounded-full bg-primary/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-primary">Free</span>} />
                 <SettingRow icon={WalletCards} title="Plan & billing" detail="Billing details are unavailable until a real account service is connected." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Not connected</span>} />
                 <SettingRow icon={KeyRound} title="Sign-in & security" detail="No sign-in provider or account credentials are configured in this workspace." trailing={<span className="rounded-full bg-muted px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Free only</span>} />
               </Card>
