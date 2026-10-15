@@ -1,0 +1,6 @@
+{
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm --dir artifacts/orion-chat build",
+  "outputDirectory": "artifacts/orion-chat/dist/public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
