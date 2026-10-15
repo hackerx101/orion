@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  ArrowUp,
   Brain,
   Check,
   CheckCircle2,
@@ -19,6 +20,7 @@ import { generateLocalResponse, ORION_SYSTEM_PROMPT } from '@/lib/transformer.js
 
 type BuildStage = 'brief' | 'building' | 'complete';
 type AppType = 'web' | 'website' | 'mobile' | 'game' | 'dashboard' | 'api';
+type SavedApp = { id: string; name: string; prompt: string; updated: string };
 
 type MyAppsProps = {
   onClose: () => void;
@@ -48,6 +50,27 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
   const [studioTab, setStudioTab] = useState<'chat' | 'preview'>('chat');
   const [agentActivity, setAgentActivity] = useState('');
   const [buildError, setBuildError] = useState('');
+  const [activeAppId, setActiveAppId] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/apps\/([^/]+)/);
+    return match?.[1] ?? null;
+  });
+  const [savedApps, setSavedApps] = useState<SavedApp[]>(() => {
+    try { return JSON.parse(window.localStorage.getItem('orion-apps') || '[]') as SavedApp[]; } catch { return []; }
+  });
+
+  const openApp = (app: SavedApp) => {
+    setActiveAppId(app.id);
+    setPrompt(app.prompt);
+    window.history.pushState({}, '', `/apps/${app.id}`);
+  };
+  const createNewApp = () => {
+    const id = `app-${Date.now()}`;
+    setActiveAppId(id);
+    setPrompt('');
+    setPlan(null);
+    setStage('brief');
+    window.history.pushState({}, '', `/apps/${id}`);
+  };
 
   const visibleSteps = useMemo(
     () => plan?.steps.map((label, index) => ({ label, done: stage === 'complete' || index < step, active: stage === 'building' && index === step })) ?? [],
@@ -106,6 +129,12 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       setStep(4);
       setAgentActivity('Build complete');
       setStage('complete');
+      setSavedApps((current) => {
+        const saved = { id: activeAppId || `app-${Date.now()}`, name: nextPlan.name, prompt: prompt.trim(), updated: 'Just now' };
+        const next = [saved, ...current.filter((item) => item.id !== saved.id)];
+        window.localStorage.setItem('orion-apps', JSON.stringify(next));
+        return next;
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'I could not finish that app. Please try again.';
       setBuildError(message);
@@ -124,6 +153,18 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
     setAgentActivity('');
   };
 
+  if (!activeAppId) {
+    return (
+      <section className="fixed inset-0 z-[60] overflow-y-auto bg-background animate-rise-in" data-testid="screen-my-apps">
+        <div className="mx-auto min-h-full w-full max-w-[860px] px-5 pb-16 pt-6 sm:px-10 sm:pt-10">
+          <button onClick={onClose} data-testid="button-back-to-chat" className="flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"><ArrowLeft size={17} /> Back to chat</button>
+          <div className="mt-14 flex items-end justify-between gap-4"><div><p className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">My apps</p><h1 className="mt-3 text-4xl font-semibold tracking-[-.055em]">Your apps</h1><p className="mt-3 text-sm text-muted-foreground">Open an app or start a new one.</p></div><button onClick={createNewApp} data-testid="button-new-app" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background"><Plus size={15} /> New app</button></div>
+          <div className="mt-8 grid gap-3">{savedApps.length ? savedApps.map((app) => <button key={app.id} onClick={() => openApp(app)} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/50"><span className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary"><AppWindow size={18} /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{app.name}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{app.prompt}</span></span><span className="text-xs text-muted-foreground">{app.updated}</span><ChevronRight size={16} className="text-muted-foreground" /></button>) : <div className="rounded-2xl border border-dashed border-border px-6 py-16 text-center text-sm text-muted-foreground">No apps yet. Create your first app.</div>}</div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="fixed inset-0 z-[60] overflow-y-auto bg-background animate-rise-in" data-testid="screen-my-apps">
       <div className="mx-auto min-h-full w-full max-w-[1120px] px-5 pb-16 pt-6 sm:px-10 sm:pt-10">
@@ -139,7 +180,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
         </div>
 
         <div className="mx-auto mt-8 flex w-full max-w-[820px] flex-col gap-5">
-          <div className="w-full">
+          <div className="hidden">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.16em] text-primary">
               <Sparkles size={13} />
               My apps
@@ -205,13 +246,12 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
             </div>
 
             {stage === 'brief' ? (
-              <div className="grid min-h-[360px] place-items-center py-12 text-center">
-                <div>
-                  <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-dashed border-primary/35 bg-primary/5 text-primary">
-                    <FolderOpen size={25} />
-                  </div>
-                  <p className="mt-5 text-sm font-semibold">Start a new chat</p>
-                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">Describe the app in the message box below. I will show each step as it is made.</p>
+              <div className="flex min-h-[360px] flex-col justify-end py-6">
+                <div className="mb-auto flex items-center gap-3 px-2 pt-8"><span className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary"><Brain size={17} /></span><div><p className="text-sm font-semibold">What should I build?</p><p className="mt-1 text-xs text-muted-foreground">Describe it in your own words.</p></div></div>
+                <div className="rounded-2xl border border-border bg-background p-3 shadow-sm">
+                  <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} data-testid="input-create-app-chat" placeholder="Describe the app you want…" rows={4} className="w-full resize-none bg-transparent px-1 text-sm leading-6 outline-none placeholder:text-muted-foreground/70" />
+                  <div className="flex items-center justify-between border-t border-border/70 pt-3"><select value={appType} onChange={(event) => setAppType(event.target.value as AppType)} aria-label="App type" className="rounded-lg bg-muted px-2 py-1.5 text-xs outline-none">{appTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select><button onClick={() => void startBuild()} disabled={!prompt.trim()} data-testid="button-start-app-build" className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-35"><ArrowUp size={15} /> Send</button></div>
+                  {buildError && <p role="alert" className="pt-3 text-xs leading-5 text-destructive">{buildError}</p>}
                 </div>
               </div>
             ) : (
