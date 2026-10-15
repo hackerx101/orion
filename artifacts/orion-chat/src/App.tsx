@@ -79,7 +79,7 @@ const modelDetails: Record<ModelId, { name: string; label: string; description: 
   orion: { name: 'Orion Intelligence', label: 'Complex problem solving', description: 'Designed for high-complexity tasks and large projects.', color: 'rose', context: '1M context', locked: true },
 };
 
-const FREE_DAILY_TOKEN_LIMIT = 5_000_000;
+const FREE_DAILY_TOKEN_LIMIT = 5_000_000; // $5 daily credit, estimated from token usage
 const localDayKey = () => new Date().toLocaleDateString('en-CA');
 const readDailyUsage = () => {
   const saved = readStore<{ day: string; used: number }>('orion-local-usage', { day: localDayKey(), used: 0 });
@@ -562,7 +562,7 @@ function App() {
           {expanded && <div className="mb-2 flex items-center justify-between px-2"><span className="font-mono text-[10px] font-medium uppercase tracking-[.18em] text-muted-foreground">Workspace</span><Sparkles size={13} className="text-primary" /></div>}
           <button onClick={openApps} disabled={generating} data-testid="button-open-apps" className={`flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><AppWindow size={16} /></span>
-            {expanded && <span><span className="block text-sm font-semibold">Apps</span><span className="block text-[11px] text-muted-foreground">Open the local app builder</span></span>}
+            {expanded && <span><span className="block text-sm font-semibold">Apps</span><span className="block text-[11px] text-muted-foreground">Open the app builder</span></span>}
           </button>
           <button onClick={openApps} disabled={generating} data-testid="button-create-app" className={`mt-1 flex w-full items-center rounded-xl text-left text-muted-foreground transition hover:bg-background hover:text-foreground disabled:opacity-50 ${expanded ? 'gap-3 px-3 py-2.5' : 'justify-center p-3'}`}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-muted-foreground"><Plus size={16} /></span>
@@ -572,7 +572,7 @@ function App() {
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 rounded-xl bg-background/65 p-3">
-              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free local allowance</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
+              <div className="flex items-center justify-between text-[11px]"><span className="font-medium">Free daily credit</span><span className="font-mono text-muted-foreground">{Math.round(remainingTokens / 1000)}K left</span></div>
               <div className="mt-2 h-1 rounded-full bg-border"><div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, remainingTokens / FREE_DAILY_TOKEN_LIMIT * 100))}%` }} /></div>
               <p className="mt-1.5 text-[9px] leading-4 text-muted-foreground">Approximate tokens · resets at midnight locally</p>
             </div>
@@ -599,7 +599,7 @@ function App() {
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} data-testid="button-mobile-menu" className="rounded-xl p-2 text-muted-foreground hover:bg-muted md:hidden"><Menu size={20} /></button>
             <div className="md:hidden"><span className="font-semibold">Orion <span className="text-primary">Chat</span></span></div>
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-primary" />Local-first workspace</div>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-primary" />Cloud workspace</div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setDark((value) => !value)} data-testid="button-theme-toggle" className="group flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-sm transition hover:border-primary/30 hover:text-foreground">
@@ -647,7 +647,7 @@ function App() {
 
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-5 pt-14 sm:pb-7">
           <div className="pointer-events-auto w-full max-w-[790px]">
-             {remainingTokens === 0 && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Daily local allowance used.</strong> It resets at midnight on this device.</span><span className="hidden font-mono sm:block">120K EST. TOKENS / DAY</span></div>}
+             {remainingTokens === 0 && <div className="mb-2 flex items-center justify-between rounded-xl border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-accent"><span><strong>Daily credit used.</strong> It resets at midnight on this device.</span><span className="hidden font-mono sm:block">120K EST. TOKENS / DAY</span></div>}
             <input ref={imageRef} type="file" accept="image/*" onChange={(event) => void handleFile(event, 'image')} className="hidden" data-testid="input-image-upload" />
             <input ref={videoRef} type="file" accept="video/*" onChange={(event) => void handleFile(event, 'video')} className="hidden" data-testid="input-video-upload" />
             <input ref={documentRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,text/plain,application/pdf" onChange={(event) => void handleFile(event, 'file')} className="hidden" data-testid="input-file-upload" />
@@ -940,7 +940,7 @@ function VoiceScreen({ selected, setSelected, model, systemPrompt, remainingToke
       setCaption(answer);
       speak(answer);
     } catch {
-      setCaption('The local model could not load. Check your connection and try again.');
+      setCaption('Cloud AI could not respond. Check the Workers AI connection and try again.');
       busyRef.current = false;
       setBusy(false);
     }

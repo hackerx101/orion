@@ -64,7 +64,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       return;
     }
     const nextPlan = createAppPlan(prompt);
-    nextPlan.steps = ['Planning your app brief', 'Generating the app scaffold', `Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`, 'Checking the preview', 'Build complete'];
+    nextPlan.steps = ['Planning your app brief', 'Generating the app scaffold', `Writing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`, 'Checking the preview', 'Build complete'];
     setPlan(nextPlan);
     setStep(0);
     setPreviewOpen(false);
@@ -86,10 +86,10 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       const html = output.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
       if (!/^<!doctype html|^<html[\s>]/i.test(html)) {
         if (/could not load a pretrained model/i.test(html)) throw new Error(html);
-        throw new Error('The selected local model did not return a complete HTML app. Try a simpler brief or another model.');
+        throw new Error('The cloud model did not return a complete HTML app. Try a simpler brief or another model.');
       }
       setStep(2);
-      setAgentActivity(`Editing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
+      setAgentActivity(`Writing ${nextPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'app'}/index.html`);
       const safeHtml = html.replace(/<head([^>]*)>/i, `<head$1><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">`);
       nextPlan.code = safeHtml;
       nextPlan.summary = `A ${appTypes.find((item) => item.id === appType)?.label.toLowerCase()} generated from your brief using ${model}.`;
@@ -109,7 +109,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
       setBuildError(message);
       setAgentActivity('Build stopped');
       setStage('brief');
-      onNotice('The local app build could not finish');
+      onNotice('The cloud app build could not finish');
     }
   };
 
@@ -140,7 +140,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
               My apps
             </div>
             <h1 data-testid="text-create-app-title" className="mt-4 max-w-[520px] text-4xl font-semibold tracking-[-.055em] sm:text-6xl">
-              Turn a thought into a first release.
+              Describe it. Orion builds the first release.
             </h1>
             <p className="mt-5 max-w-[500px] text-[15px] leading-7 text-muted-foreground">
               Tell Orion what you want to make. It will break the idea into a practical first pass, generate the interface, and leave you with a preview to keep shaping.
@@ -206,7 +206,7 @@ export default function MyApps({ onClose, onNotice, model, systemPrompt, remaini
                     <FolderOpen size={25} />
                   </div>
                   <p className="mt-5 text-sm font-semibold">Your build plan will appear here</p>
-                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">The progress stays visible while Orion turns your prompt into something you can explore.</p>
+                  <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-muted-foreground">The progress stays visible while Orion turns your prompt into something you can explore in a sandboxed preview.</p>
                 </div>
               </div>
             ) : (

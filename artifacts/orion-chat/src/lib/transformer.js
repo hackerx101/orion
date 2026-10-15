@@ -7,10 +7,10 @@ export const ORION_SYSTEM_PROMPT = [
 ].join(' ');
 
 const MODEL_MAP = {
-  flash: '@cf/meta/llama-3.1-8b-instruct',
-  lite: '@cf/meta/llama-3.1-8b-instruct',
-  'flash-max': '@cf/meta/llama-3.1-70b-instruct',
-  orion: '@cf/meta/llama-3.1-70b-instruct',
+  lite: 'meta/muse-wonder-1.0',
+  flash: 'meta/haikus',
+  'flash-max': 'meta/starlight-fast-2',
+  orion: 'meta/gpt',
 };
 
 function getApiToken() {
